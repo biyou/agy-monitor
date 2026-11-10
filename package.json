@@ -1,0 +1,13 @@
+{
+  "name": "agy-task-monitor",
+  "version": "1.0.0",
+  "description": "Antigravity Real-time Task Progress Floating Monitor & Auto-Wakeup Watchdog",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^39.2.6"
+  }
+}

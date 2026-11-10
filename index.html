@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Antigravity 实时进度监控 & 自动看门狗</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+  <link rel="stylesheet" href="./css/stages-footer.css" />
+</head>
+<body>
+  <div id="widgetShell" class="widget-shell">
+    <div id="ambientGlow" class="ambient-glow"></div>
+
+    <!-- 展开态主容器 -->
+    <div id="expandedContainer" class="expanded-container">
+      <!-- 顶栏 (Draggable) -->
+      <div class="top-bar">
+        <!-- 52px 环形进度 -->
+        <div id="ringWrap" class="ring-wrap" title="当前回合整体完成度">
+          <div id="ringTrack" class="ring-track"></div>
+          <div id="ringSweep" class="ring-sweep" style="display: none;"></div>
+          <div class="ring-inner">
+            <span id="ringPctVal">0</span><span class="ring-pct-unit">%</span>
+          </div>
+        </div>
+
+        <!-- 标题 & 状态 -->
+        <div class="title-area">
+          <div class="title-row">
+            <span id="mainTitle" class="main-title no-drag" title="双击可自定义重命名任务标题">加载任务状态中...</span>
+            <input id="titleEditInput" class="title-edit-input no-drag" type="text" maxlength="36" placeholder="输入自定义标题 (留空恢复默认)..." style="display: none;" />
+            <span id="followupTag" class="followup-tag" style="display: none;"></span>
+          </div>
+          <div class="status-row">
+            <div id="statusBadge" class="status-pill running">
+              <span class="status-dot"></span>
+              <span id="statusLabel">进行中</span>
+            </div>
+            <div id="subtitleText" class="subtitle-row">正在同步会话执行进度...</div>
+          </div>
+        </div>
+
+        <!-- 右侧控制区 -->
+        <div class="window-controls no-drag">
+          <!-- 上下文胶囊 -->
+          <div id="ctxPill" class="ctx-status-pill" title="上下文窗口状态">
+            <div id="ctxPie" class="ctx-pie"></div>
+            <span id="ctxPctText">0%</span>
+          </div>
+          <!-- 折叠按钮 -->
+          <button id="collapseBtn" class="ctrl-btn" title="折叠为迷你胶囊">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 15l6-6 6 6"/>
+            </svg>
+          </button>
+          <!-- 托盘按钮 -->
+          <button id="hideToTrayBtn" class="ctrl-btn" title="收起到系统托盘">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 4v10M7.5 10l4.5 4.5 4.5-4.5M5 19h14"/>
+            </svg>
+          </button>
+          <!-- 停止按钮 (二次点击确认) -->
+          <button id="stopTaskBtn" class="ctrl-btn stop-btn" title="停止当前任务（二次点击确认）">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2.5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3px 总进度线 -->
+      <div id="linearTrack" class="linear-track">
+        <div id="linearFill" class="linear-fill"></div>
+      </div>
+
+      <!-- 分区栏 (阶段 & 会话 & 日志) -->
+      <div class="section-bar no-drag">
+        <div class="section-left">
+          <div class="stage-stat">
+            <span class="stage-stat-label">阶段</span>
+            <span id="stageSummaryCount" class="stage-stat-val">0 / 0</span>
+          </div>
+          <div class="pill-selector">
+            <button id="convTrigger" class="pill-trigger" title="切换追踪会话">
+              <span id="convTriggerLabel">自动追踪活跃会话</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8A95A6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <button id="logPillBtn" class="log-trigger" title="展开/收起实时日志">
+          <span id="logSourceName">日志</span>
+          <svg id="logDrawerArrow" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8A95A6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- 会话下拉弹层 (浮动在页面上) -->
+      <div id="convMenu" class="session-popover no-drag" style="display: none;">
+        <div id="convMenuList" class="session-list"></div>
+        <div class="session-popover-footer">↑ ↓ 选择 · Enter 确认 · Esc 关闭</div>
+      </div>
+
+      <!-- Toast 浮层 -->
+      <div id="toastBanner" class="toast-banner no-drag">
+        <span id="toastText"></span>
+        <button id="toastCopyBtn" class="btn-toast-copy" style="display: none;">复制指令</button>
+      </div>
+
+      <!-- 阶段流水线容器 -->
+      <div class="stage-list-wrapper no-drag">
+        <!-- 滚动到顶部提示胶囊 -->
+        <div id="scrollTopHint" class="scroll-top-hint-wrap">
+          <button class="scroll-top-hint-btn">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19V5M6 11l6-6 6 6"/>
+            </svg>
+            <span id="scrollTopHintText">上方还有 1 项已完成步骤（点击查看）</span>
+          </button>
+        </div>
+        <!-- 阶段行列表 -->
+        <div id="stageList" class="stage-list"></div>
+      </div>
+
+      <!-- 实时日志抽屉 (展开时位于阶段和预览栏之间) -->
+      <div id="logDrawer" class="log-drawer no-drag" style="display: none;">
+        <div class="log-drawer-header">
+          <span class="log-pulse-dot"></span>
+          <span id="logHeaderTitle" class="log-drawer-title">tail -f · 日志 · 最近 30 行</span>
+          <button id="openNotepadBtn" class="log-btn">记事本打开</button>
+          <button id="copyLogBtn" class="log-btn">复制日志</button>
+          <button id="closeLogBtn" class="log-icon-btn" title="收起日志">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+        </div>
+        <div id="logTerminal" class="log-terminal">等待日志输出...</div>
+      </div>
+
+      <!-- 命令/文件预览栏 -->
+      <div id="cmdPreviewBar" class="cmd-preview-bar no-drag">
+        <span id="cmdPreviewTag" class="cmd-tag">末步 #1</span>
+        <span id="cmdPreviewPrefix" class="cmd-prefix">$</span>
+        <span id="cmdPreviewText" class="cmd-text">正在等待任务步骤...</span>
+        <button id="backToActiveBtn" class="cmd-btn" style="display: none;" title="取消选中，恢复自动跟随当前运行步骤">
+          ↩ 回到当前
+        </button>
+        <button id="copyCmdBtn" class="cmd-btn" title="复制完整命令或路径">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="11" height="11" rx="2"/>
+            <path d="M5 15V6a2 2 0 0 1 2-2h9"/>
+          </svg>
+          <span id="copyCmdLabel">复制</span>
+        </button>
+      </div>
+
+      <!-- 静默进度细条 (运行/卡顿时展示) -->
+      <div id="silenceBarTrack" class="silence-bar-track">
+        <div id="silenceBarFill" class="silence-bar-fill"></div>
+      </div>
+
+      <!-- 底部看门狗控制栏 (非完成态) -->
+      <div id="watchdogBar" class="watchdog-bar no-drag">
+        <div class="silence-segment-wrap">
+          <div class="silence-label-group">
+            <span class="sil-title">静默</span>
+            <span id="silenceSecNow" class="sil-now">0s</span>
+            <span id="silenceSecMax" class="sil-max">/ 60s</span>
+          </div>
+          <!-- 4 档分段按钮组 -->
+          <div id="thresholdSegment" class="threshold-segment">
+            <button class="seg-btn" data-val="30">30s</button>
+            <button class="seg-btn active" data-val="60">60s</button>
+            <button class="seg-btn" data-val="120">120s</button>
+            <button class="seg-btn" data-val="0">仅告警</button>
+          </div>
+        </div>
+        <div id="watchdogNote" class="watchdog-note" style="display: none;"></div>
+        <div style="flex: 1;"></div>
+        <button id="wakeupNowBtn" class="wake-btn" title="立即重调当前任务">
+          <svg id="wakeBoltIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>
+          </svg>
+          <svg id="wakeLockIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+            <rect x="5" y="11" width="14" height="9" rx="2"/>
+            <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+          </svg>
+          <span id="wakeBtnLabel">立即重调</span>
+        </button>
+      </div>
+
+      <!-- 底部完成总结栏 (完成态) -->
+      <div id="doneSummaryBar" class="done-summary-bar no-drag" style="display: none;">
+        <div class="done-meta-wrap">
+          <div class="done-title-row">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M8 12.5l3 3 5-6"/>
+            </svg>
+            <span id="doneAgoText" class="done-ago">刚刚完成</span>
+            <span id="doneTotalText" class="done-total">· 总耗时 0s</span>
+          </div>
+          <div id="doneSplitText" class="done-split">步骤执行 0s · 思考等待 0s</div>
+        </div>
+        <button id="copySummaryBtn" class="copy-summary-btn" title="复制本轮执行摘要">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="11" height="11" rx="2"/>
+            <path d="M5 15V6a2 2 0 0 1 2-2h9"/>
+          </svg>
+          <span>复制摘要</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= 折叠迷你胶囊容器 (高度 74px) ================= -->
+    <div id="collapsedContainer" class="collapsed-container" style="display: none;">
+      <div id="miniRingWrap" class="mini-ring-wrap">
+        <div id="miniRingTrack" class="ring-track"></div>
+        <div class="ring-inner">
+          <span id="miniRingPctVal">0</span><span class="ring-pct-unit" style="font-size: 8px;">%</span>
+        </div>
+      </div>
+      <div class="title-area">
+        <div class="title-row">
+          <div id="miniMainTitle" class="main-title">加载任务状态中...</div>
+        </div>
+        <div class="status-row">
+          <div id="miniStatusBadge" class="status-pill running" style="height: 18px; padding: 0 8px 0 6px;">
+            <span class="status-dot"></span>
+            <span id="miniStatusLabel">进行中</span>
+          </div>
+          <div id="miniSubtitleText" class="subtitle-row">正在同步会话执行进度...</div>
+        </div>
+      </div>
+      <div class="window-controls no-drag">
+        <div id="miniCtxPill" class="ctx-status-pill">
+          <div id="miniCtxPie" class="ctx-pie"></div>
+          <span id="miniCtxPctText">0%</span>
+        </div>
+        <button id="miniExpandBtn" class="ctrl-btn" title="展开阶段详情">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+        <button id="miniHideToTrayBtn" class="ctrl-btn" title="收起到系统托盘">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 4v10M7.5 10l4.5 4.5 4.5-4.5M5 19h14"/>
+          </svg>
+        </button>
+        <button id="miniStopBtn" class="ctrl-btn stop-btn" title="停止当前任务">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2.5"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./js/state-utils.js"></script>
+  <script src="./js/api-actions.js"></script>
+  <script src="./js/render-widgets.js"></script>
+  <script src="./js/render.js"></script>
+  <script src="./js/events-init.js"></script>
+</body>
+</html>
