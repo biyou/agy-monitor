@@ -1,74 +1,74 @@
-function applyTheme(themeKey) {
-  const th = THEMES[themeKey] || THEMES.running;
-  const root = document.documentElement;
-  root.style.setProperty('--accent', th.accent);
-  root.style.setProperty('--accent-dim', th.dim);
-  root.style.setProperty('--glow', hexToRgba(th.accent, 0.16));
-  root.style.setProperty('--glow-strong', hexToRgba(th.accent, 0.5));
-  root.style.setProperty('--edge', hexToRgba(th.accent, 0.24));
-  root.style.setProperty('--chip-bg', hexToRgba(th.accent, 0.14));
-  root.style.setProperty('--pill-ring', hexToRgba(th.accent, 0.3));
-}
-
 function updateContextPill(snap) {
   const ctx = snap.context || {};
   const curTok = ctx.currentTokens ?? snap.estimatedContextTokens ?? 0;
   const maxTok = ctx.maxTokens || 256000;
   const usagePct = ctx.usagePct ?? Math.min(100, Math.round((curTok / maxTok) * 100));
-  const curK = (curTok / 1000).toFixed(curTok >= 100000 ? 0 : 1).replace(/\.0$/, '');
+  const curK = (curTok / 1000).toFixed(1).replace(/\.0$/, '');
   const maxK = Math.round(maxTok / 1000);
 
-  ctxPctText.textContent = `${usagePct}%`;
-  miniCtxPctText.textContent = `${usagePct}%`;
+  ctxPctLabel.textContent = `${usagePct}%`;
 
-  let ctxColor = '#38BDF8';
+  let ctxColor = '#38bdf8';
+  let borderRgba = 'rgba(56, 189, 248, 0.35)';
+  let textColor = '#7dd3fc';
+  let tipAccentClass = 'tip-accent-sky';
+
   if (usagePct >= 86 || snap.isCompacting) {
-    ctxColor = '#A78BFA';
+    ctxColor = '#c084fc';
+    borderRgba = 'rgba(192, 132, 252, 0.45)';
+    textColor = '#d8b4fe';
+    tipAccentClass = 'tip-accent-purple';
   } else if (usagePct >= 65) {
-    ctxColor = '#FBBF24';
+    ctxColor = '#fbbf24';
+    borderRgba = 'rgba(251, 191, 36, 0.45)';
+    textColor = '#fcd34d';
+    tipAccentClass = 'tip-accent-amber';
   }
 
-  const deg = usagePct * 3.6;
-  ctxPie.style.background = `conic-gradient(${ctxColor} ${deg}deg, rgba(255,255,255,.12) 0deg)`;
-  miniCtxPie.style.background = `conic-gradient(${ctxColor} ${deg}deg, rgba(255,255,255,.12) 0deg)`;
-  ctxPctText.style.color = ctxColor;
-  miniCtxPctText.style.color = ctxColor;
+  ctxSectorPath.setAttribute('fill', ctxColor);
+  ctxSectorPath.setAttribute('d', buildPieSectorPath(7, 7, 5.8, usagePct));
+  ctxPiePill.style.borderColor = borderRgba;
+  ctxPiePill.style.color = textColor;
 
-  const cacheK = ((ctx.cacheTokens || 0) / 1000).toFixed(1).replace(/\.0$/, '');
   const inK = ((ctx.inputTokens || 0) / 1000).toFixed(1).replace(/\.0$/, '');
   const outK = ((ctx.totalOutputTokens || 0) / 1000).toFixed(1).replace(/\.0$/, '');
-  const statusHint = usagePct >= 86 ? '临近阈值' : usagePct >= 65 ? '较高' : '充裕';
+  const cacheHit = ctx.cacheHitPct || 0;
 
-  const tipLines = [
-    `【上下文窗口】${curK}k / ${maxK}k (${curTok.toLocaleString()} / ${maxTok.toLocaleString()} tokens · ${usagePct}% · ${statusHint})`,
-    `【Token 构成】缓存命中 ${cacheK}k (${ctx.cacheHitPct || 0}%) · 新增输入 ${inK}k · 累计输出 ${outK}k`
-  ];
+  let compactLine = '暂未触发自动压缩';
   if (ctx.compactionCount > 0) {
-    const fromK = Math.round((ctx.lastCompactedFrom || 0) / 1000);
-    const toK = Math.round((ctx.lastCompactedTo || 0) / 1000);
-    tipLines.push(`【压缩记录】本会话已自动 Compact ${ctx.compactionCount} 次${fromK ? ` (${fromK}k → ${toK}k)` : ''}`);
-  } else {
-    tipLines.push(`【压缩记录】本会话尚未触发自动 Compact`);
+    const fromK = ((ctx.lastCompactedFrom || 0) / 1000).toFixed(1).replace(/\.0$/, '');
+    const toK = ((ctx.lastCompactedTo || 0) / 1000).toFixed(1).replace(/\.0$/, '');
+    compactLine = `已压缩 ${ctx.compactionCount} 次${ctx.lastCompactedFrom ? ` (${fromK}k → ${toK}k)` : ''}`;
   }
-  const fullTip = tipLines.join('\n');
-  ctxPill.title = fullTip;
-  miniCtxPill.title = fullTip;
+
+  currentCtxTipHtml = [
+    `<div><b class="${tipAccentClass}">【上下文窗口】</b> ~${curK}k / ${maxK}k tokens (${usagePct}%)${snap.isCompacting ? ' · 自动压缩中' : ''}</div>`,
+    `<div><b class="${tipAccentClass}">【Token 构成】</b> 输入 ${inK}k · 缓存命中 ${cacheHit}% · 输出 ${outK}k</div>`,
+    `<div><b class="${tipAccentClass}">【压缩记录】</b> ${compactLine}</div>`
+  ].join('');
+
+  // Fallback native tooltip when collapsed into 74px mini-capsule
+  ctxPiePill.title = isCollapsed
+    ? `【上下文窗口】~${curK}k / ${maxK}k tokens (${usagePct}%)\n【Token 构成】输入 ${inK}k · 缓存命中 ${cacheHit}% · 输出 ${outK}k\n【压缩记录】${compactLine}`
+    : '';
 }
 
 function updateCmdPreviewBar(snap) {
-  cmdPreviewBar.style.display = 'flex';
+  const rawLogName = snap.activeLogName || 'transcript.jsonl';
+  const shortLogName = rawLogName === 'transcript.jsonl' ? '日志' : rawLogName;
+  logBtn.textContent = `📄 ${shortLogName}`;
+  logHeaderLabel.textContent = `${rawLogName} · 实时跟随 (tail -f)`;
+
   if (!snap || !snap.stages || snap.stages.length === 0) {
-    cmdPreviewTag.textContent = '末步 #0';
-    cmdPreviewPrefix.textContent = '$';
-    cmdPreviewText.textContent = '正在等待任务步骤...';
-    cmdPreviewText.title = '';
-    backToActiveBtn.style.display = 'none';
-    copyCmdBtn.style.display = 'none';
+    previewPrefix.textContent = '$';
+    previewText.textContent = '正在等待任务步骤...';
+    previewText.title = '';
+    unpinBtn.style.display = 'none';
+    copyPreviewBtn.style.display = 'none';
     currentPreviewRawText = '';
     return;
   }
 
-  const isDoneState = !snap.isRunning && !snap.isCompacting && !snap.isStopped;
   let targetStage = null;
   let isPinned = false;
   if (pinnedStageIndex !== null) {
@@ -81,71 +81,219 @@ function updateCmdPreviewBar(snap) {
     targetStage = snap.stages.find(s => s.index === snap.activeStageIndex) || snap.stages[snap.stages.length - 1];
   }
 
-  const prefix = targetStage.previewPrefix || (targetStage.toolType === 'bash' ? '$' : '状态');
+  const prefix = targetStage.previewPrefix || (targetStage.toolType === 'bash' ? '$' : '🧠 状态');
   const rawTarget = targetStage.previewTarget || targetStage.command || targetStage.title || '';
   currentPreviewRawText = rawTarget;
 
   const displayTarget =
     targetStage.toolType === 'write' || targetStage.toolType === 'edit' || targetStage.toolType === 'read'
-      ? middleEllipsisPath(rawTarget, 40)
+      ? middleEllipsisPath(rawTarget, 42)
       : rawTarget;
 
-  if (isPinned) {
-    cmdPreviewTag.textContent = `已选 #${targetStage.index}`;
-    backToActiveBtn.textContent = isDoneState ? '✕ 取消' : '↩ 回到当前';
-    backToActiveBtn.style.display = 'inline-flex';
-  } else {
-    cmdPreviewTag.textContent = snap.isRunning ? `当前 #${targetStage.index}` : `末步 #${targetStage.index}`;
-    backToActiveBtn.style.display = 'none';
-  }
-
-  cmdPreviewPrefix.textContent = prefix;
-  cmdPreviewText.textContent = displayTarget;
-  cmdPreviewText.title = `${targetStage.title}\n${rawTarget}`;
-  copyCmdBtn.style.display = rawTarget ? 'inline-flex' : 'none';
+  previewPrefix.textContent = prefix;
+  previewText.textContent = displayTarget;
+  previewText.title = `${targetStage.title}\n${rawTarget}`;
+  unpinBtn.style.display = isPinned ? 'inline-flex' : 'none';
+  copyPreviewBtn.style.display = rawTarget ? 'inline-flex' : 'none';
 }
 
-function buildConvMenu(conversations) {
+function renderMultiTaskBar(snap) {
+  const rawList = Array.isArray(snap.parallelTasks) ? snap.parallelTasks : [];
+
+  // Re-enable any dismissed task if it starts running/compacting again
+  for (const t of rawList) {
+    if (t.isRunning || t.isCompacting) {
+      dismissedParallelIds.delete(t.id);
+    }
+  }
+
+  visibleParallelTasks = rawList.filter(t => !dismissedParallelIds.has(t.id));
+
+  // Global background watchdog inspection across all active conversations
+  const allConvs = Array.isArray(snap.conversations) ? snap.conversations : visibleParallelTasks;
+  if (watchdogThreshold > 0) {
+    for (const c of allConvs) {
+      if (c.isRunning && !c.isCompacting && (c.silenceSeconds || 0) >= watchdogThreshold) {
+        const lastAt = lastAutoWakeupByConv.get(c.id) || 0;
+        if (Date.now() - lastAt > 15000) {
+          lastAutoWakeupByConv.set(c.id, Date.now());
+          const isBg = c.id !== snap.convId;
+          doWakeup(
+            `日志连续 ${c.silenceSeconds} 秒无输出`,
+            c.id,
+            isBg ? c.title || c.shortId : ''
+          );
+        }
+      }
+    }
+  }
+
+  const stallWarnSec = watchdogThreshold > 0 ? Math.min(watchdogThreshold, 45) : 60;
+  const stalledTasks = visibleParallelTasks.filter(
+    t => t.isRunning && !t.isCompacting && (t.silenceSeconds || 0) >= stallWarnSec
+  );
+
+  // Update 74px header session / parallel button
+  const shortId = snap.convId && snap.convId !== 'none' ? snap.convId.slice(0, 6) : '';
+  convDropdownBtn.classList.remove('parallel-cycle-sky', 'parallel-cycle-amber');
+
+  if (isCollapsed && visibleParallelTasks.length >= 2) {
+    const curIdx = Math.max(0, visibleParallelTasks.findIndex(t => t.id === snap.convId));
+    if (stalledTasks.length > 0) {
+      convDropdownBtn.classList.add('parallel-cycle-amber');
+      convBtnText.textContent = `⚠ ${stalledTasks.length}卡顿/${visibleParallelTasks.length}并行 ↻`;
+    } else {
+      convDropdownBtn.classList.add('parallel-cycle-sky');
+      convBtnText.textContent = `⚡ ${visibleParallelTasks.length}并行 (${curIdx + 1}/${visibleParallelTasks.length}) ↻`;
+    }
+    convDropdownBtn.title = '左键点击轮播切换下一个并行任务 · 右键展开完整会话菜单';
+  } else {
+    convDropdownBtn.title = '切换监控会话';
+    if (currentConvChoice === 'auto') {
+      convBtnText.textContent =
+        visibleParallelTasks.length >= 2
+          ? `自动追踪 · ${visibleParallelTasks.length}并行`
+          : shortId
+          ? `自动追踪 (${shortId})`
+          : '自动追踪';
+    }
+  }
+
+  // Show Multi-Task Pill Bar only when >= 2 parallel/recent tasks and not collapsed
+  if (visibleParallelTasks.length < 2 || isCollapsed) {
+    multiTaskBar.style.display = 'none';
+    multiTaskBar.innerHTML = '';
+    return;
+  }
+
+  multiTaskBar.style.display = 'flex';
+  multiTaskBar.innerHTML = '';
+
+  visibleParallelTasks.forEach(t => {
+    const isAct = t.id === snap.convId;
+    const isTaskStalled =
+      t.isRunning && !t.isCompacting && (t.silenceSeconds || 0) >= stallWarnSec;
+
+    let dotChar = '●';
+    let dotColor = '#38bdf8';
+    let metricText = `${t.overallProgress || 0}%`;
+    let metricColor = '#94a3b8';
+
+    if (t.isStopped) {
+      dotChar = '■';
+      dotColor = '#fb7185';
+      metricText = '已停';
+      metricColor = '#fda4af';
+    } else if (t.isCompacting) {
+      dotChar = '✦';
+      dotColor = '#c084fc';
+      metricText = '压缩';
+      metricColor = '#d8b4fe';
+    } else if (isTaskStalled) {
+      dotChar = '⚠';
+      dotColor = '#fbbf24';
+      metricText = `⚠ ${t.silenceSeconds}s`;
+      metricColor = '#fde68a';
+    } else if (!t.isRunning) {
+      dotChar = '✓';
+      dotColor = '#34d399';
+      metricText = '完成';
+      metricColor = '#6ee7b7';
+    }
+
+    const tab = document.createElement('button');
+    tab.className = `task-pill-tab${isAct ? ' is-active' : ''}${
+      !isAct && isTaskStalled ? ' is-stalled-bg' : ''
+    }`;
+    const rolePrefix = t.isSubagent ? `<span class="tab-sub-badge">子</span>` : '';
+    const canDismiss = !t.isRunning && !t.isCompacting;
+    const closeHtml = canDismiss
+      ? `<span class="tab-close" data-close-id="${t.id}" title="从标签栏移除">×</span>`
+      : '';
+
+    tab.title = `${t.isSubagent ? '[子智能体] ' : ''}${t.title} (${t.completedStages}/${t.totalStages} 阶段 · ${metricText})`;
+    tab.innerHTML = `
+      <span style="color:${dotColor};font-weight:700;">${dotChar}</span>
+      ${rolePrefix}
+      <span class="tab-title">${escapeHtml(t.title)}</span>
+      <span class="tab-metric" style="color:${metricColor};">${metricText}</span>
+      ${closeHtml}
+    `;
+
+    tab.addEventListener('click', e => {
+      const closeEl = e.target.closest('[data-close-id]');
+      if (closeEl) {
+        e.stopPropagation();
+        const cid = closeEl.getAttribute('data-close-id');
+        dismissedParallelIds.add(cid);
+        if (cid === snap.convId && visibleParallelTasks.length > 1) {
+          const nextTask = visibleParallelTasks.find(x => x.id !== cid);
+          if (nextTask) selectConversation(nextTask.id, nextTask.label || nextTask.title);
+        } else {
+          renderMultiTaskBar(snap);
+        }
+        return;
+      }
+      selectConversation(t.id, t.label || t.title);
+    });
+
+    multiTaskBar.appendChild(tab);
+  });
+}
+
+function buildConvMenu(conversations, currentConvId) {
   convMenuList.innerHTML = '';
-  const baseItems = [{ id: 'auto', label: '自动追踪活跃会话（当前）', tag: '自动', time: '' }];
-  const allItems = [...baseItems, ...(conversations || []).map(c => {
-    let tag = '已就绪';
-    if (c.isRunning) tag = '运行中';
-    else if (c.isCompacting) tag = '压缩中';
-    else if (c.isStopped) tag = '已停止';
-    return { id: c.id, label: c.title || c.label || c.id.slice(0, 8), tag, time: c.time || '' };
-  })];
+  const baseItems = [{ id: 'auto', label: '自动追踪活跃会话 (当前)', tag: '自动', time: '' }];
+  const allItems = [
+    ...baseItems,
+    ...(conversations || []).map(c => {
+      let tag = '已就绪';
+      if (c.isRunning) tag = '运行中';
+      else if (c.isCompacting) tag = '压缩中';
+      else if (c.isStopped) tag = '已停止';
+      const subPrefix = c.isSubagent ? '[子] ' : '';
+      return {
+        id: c.id,
+        label: `${subPrefix}${c.title || c.label || c.id.slice(0, 8)}`,
+        tag,
+        time: c.time || ''
+      };
+    })
+  ];
 
   const TAG_COLORS = {
-    '自动': ['rgba(255,255,255,.08)', '#B6C0CE'],
-    '运行中': ['rgba(56,189,248,.15)', '#38BDF8'],
-    '压缩中': ['rgba(167,139,250,.15)', '#A78BFA'],
-    '已停止': ['rgba(251,113,133,.15)', '#FB7185'],
-    '已就绪': ['rgba(255,255,255,.08)', '#B6C0CE']
+    '自动': ['rgba(148,163,184,0.18)', '#cbd5e1'],
+    '运行中': ['rgba(56,189,248,0.18)', '#38bdf8'],
+    '压缩中': ['rgba(192,132,252,0.18)', '#c084fc'],
+    '已停止': ['rgba(251,113,133,0.18)', '#fb7185'],
+    '已就绪': ['rgba(52,211,153,0.15)', '#34d399']
   };
 
   allItems.forEach(item => {
     const row = document.createElement('div');
     const isAct = currentConvChoice === item.id;
-    row.className = `session-item ${isAct ? 'active' : ''}`;
+    row.className = `conv-item${isAct ? ' active' : ''}`;
     const [tBg, tColor] = TAG_COLORS[item.tag] || TAG_COLORS['已就绪'];
     row.innerHTML = `
-      <span class="session-tag" style="background:${tBg}; color:${tColor};">${item.tag}</span>
-      <span class="session-title">${item.label}</span>
-      <span class="session-time">${item.time}</span>
+      <span class="conv-item-tag" style="background:${tBg};color:${tColor};">${item.tag}</span>
+      <span class="conv-item-title">${escapeHtml(item.label)}</span>
+      <span class="conv-item-time">${escapeHtml(item.time)}</span>
     `;
     row.addEventListener('click', () => {
-      selectConversation(item.id, item.label);
+      const btnLabel = item.id === 'auto'
+        ? (shortId ? `自动追踪 (${shortId})` : '自动追踪')
+        : item.label;
+      selectConversation(item.id, btnLabel);
       convMenu.style.display = 'none';
+      convDropdownBtn.classList.remove('active');
     });
     convMenuList.appendChild(row);
   });
 }
 
-function updateStopButtons(snap) {
-  const canStop = snap.isRunning || snap.isCompacting;
-  stopTaskBtn.disabled = !canStop;
-  miniStopBtn.disabled = !canStop;
+function updateStopButton(snap) {
+  const canStop = Boolean(snap.isRunning || snap.isCompacting);
+  stopBtn.disabled = !canStop;
   if (!canStop && awaitingStopConfirm) {
     resetStopConfirmation();
   }
@@ -153,75 +301,39 @@ function updateStopButtons(snap) {
 
 function renderFooterState(snap, isDoneState) {
   if (isDoneState) {
-    watchdogBar.style.display = 'none';
-    silenceBarTrack.style.display = 'none';
-    doneSummaryBar.style.display = 'flex';
+    watchdogRow.style.display = 'none';
+    doneRow.style.display = 'flex';
+    silenceFill.style.width = '0%';
 
     doneAgoText.textContent = formatRelativeFinished(snap.completedAtMs);
-    const totalDurStr = formatDuration(snap.elapsedSeconds, 'done');
+    doneAgoText.title = snap.completedAtClock ? `精确完成时间: ${snap.completedAtClock}` : '';
     const stepsDurStr = formatDuration(snap.stepsDurationSec, 'done');
     const waitDurStr = formatDuration(snap.thinkWaitSec, 'done');
-    doneTotalText.textContent = `· 总耗时 ${totalDurStr}`;
     doneSplitText.textContent = `步骤执行 ${stepsDurStr} · 思考等待 ${waitDurStr}`;
+    return;
+  }
+
+  doneRow.style.display = 'none';
+  watchdogRow.style.display = 'flex';
+
+  wakeupBtn.disabled = Boolean(snap.isCompacting);
+  wakeupBtn.textContent = snap.isCompacting ? '🔒 压缩保护中' : '⚡ 立即重调';
+
+  const silSec = snap.silenceSeconds || 0;
+  if (watchdogThreshold > 0) {
+    silenceLabel.textContent = `静默 ${silSec}s / ${watchdogThreshold}s`;
+    const ratio = snap.isStopped ? 0 : Math.min(100, Math.round((silSec / watchdogThreshold) * 100));
+    silenceFill.style.width = `${ratio}%`;
+    silenceFill.style.backgroundColor = ratio >= 85 ? '#fb7185' : ratio >= 50 ? '#fbbf24' : '#38bdf8';
   } else {
-    doneSummaryBar.style.display = 'none';
-    watchdogBar.style.display = 'flex';
-    silenceBarTrack.style.display = 'block';
+    silenceLabel.textContent = `静默 ${silSec}s (仅告警)`;
+    silenceFill.style.width = '0%';
+  }
 
-    if (snap.isCompacting) {
-      silenceSecNow.textContent = '0s';
-      silenceSecMax.textContent = '/ 60s';
-      thresholdSegment.style.display = 'none';
-      watchdogNote.style.display = 'inline-block';
-      watchdogNote.textContent = '上下文压缩期间已暂停超时重调（防打断保护中）';
-      watchdogNote.style.color = '#A78BFA';
-      silenceBarFill.style.width = '0%';
-
-      wakeupNowBtn.disabled = true;
-      wakeupNowBtn.title = '正在压缩上下文窗口，已锁定重调按钮以防打断';
-      wakeBoltIcon.style.display = 'none';
-      wakeLockIcon.style.display = 'inline-block';
-      wakeBtnLabel.textContent = '防打断';
-    } else if (snap.isStopped) {
-      silenceSecNow.textContent = '0s';
-      silenceSecMax.textContent = '';
-      thresholdSegment.style.display = 'none';
-      watchdogNote.style.display = 'inline-block';
-      watchdogNote.textContent = '任务已手动停止 · 点击右侧可恢复执行';
-      watchdogNote.style.color = '#FDA4AF';
-      silenceBarFill.style.width = '0%';
-
-      wakeupNowBtn.disabled = false;
-      wakeupNowBtn.title = '向当前会话发送唤醒恢复指令';
-      wakeBoltIcon.style.display = 'inline-block';
-      wakeLockIcon.style.display = 'none';
-      wakeBtnLabel.textContent = '立即重调';
-    } else {
-      thresholdSegment.style.display = 'flex';
-      watchdogNote.style.display = 'none';
-      silenceSecNow.textContent = `${snap.silenceSeconds || 0}s`;
-      silenceSecMax.textContent = watchdogThreshold > 0 ? `/ ${watchdogThreshold}s` : '';
-
-      wakeupNowBtn.disabled = false;
-      wakeupNowBtn.title = '立即向当前会话发送唤醒重调指令';
-      wakeBoltIcon.style.display = 'inline-block';
-      wakeLockIcon.style.display = 'none';
-      wakeBtnLabel.textContent = '立即重调';
-
-      if (watchdogThreshold > 0) {
-        const ratio = Math.min(100, Math.round((snap.silenceSeconds / watchdogThreshold) * 100));
-        silenceBarFill.style.width = `${ratio}%`;
-        silenceBarFill.style.backgroundColor = ratio >= 85 ? '#FB7185' : ratio >= 50 ? '#FBBF24' : '#38BDF8';
-      } else {
-        silenceBarFill.style.width = '0%';
-      }
-
-      if (watchdogThreshold > 0 && snap.silenceSeconds >= watchdogThreshold) {
-        if (Date.now() - lastAutoWakeupAt > 15000) {
-          lastAutoWakeupAt = Date.now();
-          doWakeup(`日志连续 ${snap.silenceSeconds} 秒无输出`);
-        }
-      }
-    }
+  if (snap.isCompacting) {
+    watchdogNote.style.display = 'inline';
+    watchdogNote.textContent = '防打断已锁定';
+  } else {
+    watchdogNote.style.display = 'none';
   }
 }

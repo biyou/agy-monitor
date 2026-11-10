@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { exec } = require('child_process');
-const { ROOT_DIR, PORT, runtimeState, saveCustomTitle } = require('./config-state.cjs');
+const { ROOT_DIR, PORT, runtimeState } = require('./config-state.cjs');
 const { getCurrentSnapshot, triggerWakeup, stopRunningTask } = require('./actions.cjs');
 
 function startHttpServer(callbacks) {
@@ -23,7 +23,10 @@ function startHttpServer(callbacks) {
     }
 
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate'
+      });
       res.end(fs.readFileSync(htmlPath, 'utf-8'));
       return;
     }
@@ -45,7 +48,10 @@ function startHttpServer(callbacks) {
             : ext === '.js'
             ? 'application/javascript; charset=utf-8'
             : 'application/octet-stream';
-        res.writeHead(200, { 'Content-Type': contentType });
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Cache-Control': 'no-store, no-cache, must-revalidate'
+        });
         res.end(fs.readFileSync(targetPath, 'utf-8'));
         return;
       }
@@ -115,25 +121,6 @@ function startHttpServer(callbacks) {
           res.end(JSON.stringify(result));
         } catch (e) {
           res.writeHead(500);
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
-      return;
-    }
-
-    if (url.pathname === '/api/rename-title' && req.method === 'POST') {
-      let body = '';
-      req.on('data', c => (body += c));
-      req.on('end', () => {
-        try {
-          const data = JSON.parse(body || '{}');
-          const snap = getCurrentSnapshot();
-          const targetId = data.convId || snap.convId;
-          saveCustomTitle(targetId, data.title || '');
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true }));
-        } catch (e) {
-          res.writeHead(400);
           res.end(JSON.stringify({ error: e.message }));
         }
       });

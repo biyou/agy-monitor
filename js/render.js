@@ -1,90 +1,81 @@
 function renderSnapshot(snap, options = {}) {
   latestSnap = snap;
-  buildConvMenu(snap.conversations);
-  updateStopButtons(snap);
+  buildConvMenu(snap.conversations, snap.convId);
+  renderMultiTaskBar(snap);
+  updateStopButton(snap);
   updateContextPill(snap);
 
   const pct = Math.max(0, Math.min(100, snap.overallProgress || 0));
   const isDoneState = !snap.isRunning && !snap.isCompacting && !snap.isStopped;
-  const isStalled = snap.isRunning && !snap.isCompacting && watchdogThreshold > 0 && snap.silenceSeconds >= Math.min(watchdogThreshold, 20);
+  const isStalled =
+    snap.isRunning &&
+    !snap.isCompacting &&
+    watchdogThreshold > 0 &&
+    snap.silenceSeconds >= Math.min(watchdogThreshold, 45);
 
-  let themeKey = 'running';
-  if (snap.isStopped) themeKey = 'stopped';
-  else if (snap.isCompacting) themeKey = 'compacting';
-  else if (isStalled) themeKey = 'stalled';
-  else if (isDoneState) themeKey = 'done';
-
-  applyTheme(themeKey);
-
-  // 环形进度
-  const deg = pct * 3.6;
-  const acc = THEMES[themeKey].accent;
-  ringPctVal.textContent = pct;
-  miniRingPctVal.textContent = pct;
-
-  if (snap.isCompacting) {
-    ringTrack.style.background = `conic-gradient(${acc} 0deg, rgba(255,255,255,.08) 0deg)`;
-    miniRingTrack.style.background = `conic-gradient(${acc} 0deg, rgba(255,255,255,.08) 0deg)`;
-    ringSweep.style.display = 'block';
-  } else {
-    ringTrack.style.background = `conic-gradient(${acc} ${deg}deg, rgba(255,255,255,.08) 0deg)`;
-    miniRingTrack.style.background = `conic-gradient(${acc} ${deg}deg, rgba(255,255,255,.08) 0deg)`;
-    ringSweep.style.display = 'none';
+  let dataState = 'running';
+  if (snap.isStopped) {
+    dataState = snap.isStoppedCooled ? 'stopped_cool' : 'stopped';
+  } else if (snap.isCompacting) {
+    dataState = 'compacting';
+  } else if (isStalled) {
+    dataState = 'stalled';
+  } else if (isDoneState) {
+    dataState = 'done';
   }
 
-  // 顶栏进度细线
-  linearTrack.style.opacity = isDoneState ? '0.45' : '1';
-  linearFill.classList.toggle('indeterminate', snap.isCompacting);
-  linearFill.style.width = snap.isCompacting ? '100%' : `${pct}%`;
+  hudWin.setAttribute('data-state', dataState);
 
-  // 状态徽标与文本
-  const unifiedActiveDur = formatDuration(snap.activeStageElapsedSec || snap.silenceSeconds, 'running');
-  let labelText = THEMES[themeKey].label;
-  if (snap.isCompacting) labelText = `Compacting · ${unifiedActiveDur}`;
-  else if (isStalled) labelText = `疑似卡顿 · ${formatDuration(snap.silenceSeconds, 'running')}`;
+  // 42x42 SVG Progress Ring (r=17 => circumference = 106.8)
+  const circumference = 106.8;
+  const offset = circumference - (pct / 100) * circumference;
+  ringFill.style.strokeDashoffset = String(offset.toFixed(1));
+  ringLabel.textContent = dataState === 'compacting' ? '✦' : `${pct}%`;
 
-  statusLabel.textContent = labelText;
-  miniStatusLabel.textContent = labelText;
+  // Header bottom 2px linear bar
+  linearBar.style.width = `${pct}%`;
 
-  // 标题
-  if (!isEditingTitle) {
-    mainTitle.textContent = snap.title || 'Antigravity 会话监控';
-    miniMainTitle.textContent = snap.title || 'Antigravity 会话监控';
-  }
+  // Title & 3-line Tooltip
+  titleText.textContent = snap.title || 'Antigravity 会话监控';
 
-  const tooltipParts = [`【任务名称】${snap.title || ''}（双击可重命名）`];
-  if (snap.initialPrompt) tooltipParts.push(`【初始任务】${snap.initialPrompt.slice(0, 160)}`);
-  if (snap.fullPrompt && snap.fullPrompt !== snap.initialPrompt) tooltipParts.push(`【本轮指令】${snap.fullPrompt.slice(0, 220)}`);
-  mainTitle.title = tooltipParts.join('\n');
-  miniMainTitle.title = mainTitle.title;
+  const initPromptText = snap.initialPrompt ? snap.initialPrompt.slice(0, 140) : '暂无初始任务记录';
+  const latestOrderText = snap.latestPrompt || (snap.fullPrompt ? snap.fullPrompt.slice(0, 140) : '执行当前回合所有步骤');
+  currentTitleTipHtml = [
+    `<div><b class="tip-accent-sky">【任务名称】</b> ${escapeHtml(snap.title || '')}</div>`,
+    `<div><b class="tip-accent-sky">【初始任务】</b> ${escapeHtml(initPromptText)}</div>`,
+    `<div><b class="tip-accent-sky">【本轮指令】</b> ${escapeHtml(latestOrderText)}</div>`
+  ].join('');
+
+  titleText.title = isCollapsed
+    ? `【任务名称】${snap.title || ''}\n【初始任务】${initPromptText}\n【本轮指令】${latestOrderText}`
+    : '';
 
   if (snap.latestPrompt) {
-    followupTag.style.display = 'inline-flex';
-    followupTag.textContent = `追问: “${snap.latestPrompt}”`;
-    followupTag.title = `最新提问: ${snap.latestPrompt}`;
+    followupPill.textContent = `追问: "${snap.latestPrompt}"`;
+    followupPill.title = `最新追问: ${snap.latestPrompt}`;
+    followupPill.style.display = 'inline-flex';
   } else {
-    followupTag.style.display = 'none';
+    followupPill.style.display = 'none';
   }
 
-  const subText = snap.isRunning ? `当前第 ${snap.activeStageIndex} 步：${snap.activeStageTitle || ''}` : (snap.activeStageTitle || '');
-  subtitleText.textContent = subText;
-  subtitleText.title = subText;
-  miniSubtitleText.textContent = subText;
-  miniSubtitleText.title = subText;
+  // Status Capsule: "<State> · X/Y 阶段"
+  const doneCnt = snap.completedStages || 0;
+  const totCnt = snap.totalStages || 0;
+  let statePrefix = '进行中';
+  if (dataState === 'compacting') statePrefix = 'Compacting';
+  else if (dataState === 'stalled') statePrefix = '疑似卡顿';
+  else if (dataState === 'stopped' || dataState === 'stopped_cool') statePrefix = '已停止';
+  else if (dataState === 'done') statePrefix = '已完成';
 
-  // 分区统计
-  stageSummaryCount.textContent = `${snap.completedStages || 0} / ${snap.totalStages || 0}`;
-  const rawLogName = snap.activeLogName || 'transcript.jsonl';
-  logSourceName.textContent = rawLogName === 'transcript.jsonl' ? '日志' : rawLogName;
-  logHeaderTitle.textContent = `tail -f · ${logSourceName.textContent} · 最近 30 行`;
+  statusText.textContent = `${statePrefix} · ${doneCnt}/${totCnt} 阶段`;
 
-  // 阶段流水线渲染（就地差分）
+  // Stage List (in-place DOM diffing to preserve scroll & interactions)
   const wasNearBottom = stageList.scrollHeight - stageList.scrollTop - stageList.clientHeight <= 28;
   const convChanged = snap.convId !== lastRenderedConvId;
 
   if (!snap.stages || snap.stages.length === 0) {
     if (!stageList.querySelector('[data-empty-placeholder="1"]')) {
-      stageList.innerHTML = `<div class="stage-row" data-empty-placeholder="1"><span class="stage-idx">-</span><span class="stage-name">当前回合暂无工具阶段记录</span><span class="stage-dur">--</span></div>`;
+      stageList.innerHTML = `<div class="stage-card" data-empty-placeholder="1"><div class="stage-main-row"><span class="stage-icon" style="color:#64748b">○</span><span class="stage-title" style="color:#94a3b8">当前回合暂无工具阶段记录</span><span class="stage-dur">--</span></div></div>`;
     }
     scrollTopHint.classList.remove('visible');
     lastRenderedConvId = snap.convId;
@@ -98,129 +89,96 @@ function renderSnapshot(snap, options = {}) {
     }
 
     snap.stages.forEach((st, idx) => {
-      const isPinned = pinnedStageIndex === st.index;
+      const isPin = pinnedStageIndex === st.index;
       const hasSubs = Array.isArray(st.subSteps) && st.subSteps.length > 1;
       const isSubOpen = hasSubs && expandedSubstepIndices.has(st.index);
 
-      let groupEl = stageList.children[idx];
-      if (!groupEl || !groupEl.classList.contains('stage-item-group')) {
-        if (groupEl) groupEl.remove();
-        groupEl = document.createElement('div');
-        groupEl.className = 'stage-item-group';
-        groupEl.innerHTML = `
-          <div class="stage-timeline-v-line"></div>
-          <div class="stage-row">
-            <div class="stage-node"></div>
-            <span class="stage-idx"></span>
-            <span class="stage-name"></span>
-            <span class="stage-badge-wrap"></span>
-            <span class="stage-expand-wrap"></span>
-            <span class="stage-dur"></span>
-          </div>
-          <div class="substeps-box"></div>
-        `;
-        const rEl = groupEl.querySelector('.stage-row');
-        rEl.addEventListener('click', () => {
-          const curIdx = Number(groupEl.dataset.stageIndex || 0);
-          const curHasSubs = groupEl.dataset.hasSubs === '1';
+      let cardEl = stageList.children[idx];
+      if (!cardEl || !cardEl.classList.contains('stage-card')) {
+        if (cardEl) cardEl.remove();
+        cardEl = document.createElement('div');
+        cardEl.className = 'stage-card';
+        cardEl.addEventListener('click', () => {
+          const curIdx = Number(cardEl.dataset.stageIndex || 0);
+          const curHasSubs = cardEl.dataset.hasSubs === '1';
           if (!curIdx) return;
           if (curHasSubs) {
             if (expandedSubstepIndices.has(curIdx)) expandedSubstepIndices.delete(curIdx);
             else expandedSubstepIndices.add(curIdx);
-            pinnedStageIndex = curIdx;
-          } else {
-            pinnedStageIndex = pinnedStageIndex === curIdx ? null : curIdx;
           }
+          pinnedStageIndex = pinnedStageIndex === curIdx && !curHasSubs ? null : curIdx;
           if (latestSnap) renderSnapshot(latestSnap, { preserveScroll: true });
         });
-        stageList.appendChild(groupEl);
+        stageList.appendChild(cardEl);
       }
 
-      groupEl.dataset.stageIndex = String(st.index);
-      groupEl.dataset.hasSubs = hasSubs ? '1' : '0';
+      cardEl.dataset.stageIndex = String(st.index);
+      cardEl.dataset.hasSubs = hasSubs ? '1' : '0';
+      cardEl.className = `stage-card${isPin ? ' is-pinned' : ''}`;
 
-      const vLine = groupEl.querySelector('.stage-timeline-v-line');
-      vLine.style.top = idx === 0 ? '50%' : '0px';
-      vLine.style.bottom = idx === snap.stages.length - 1 ? '50%' : '0px';
-
-      const rowEl = groupEl.querySelector('.stage-row');
-      rowEl.className = `stage-row ${st.status}${isPinned ? ' selected-pin' : ''}`;
-
-      // Node 图标与动效
-      const nodeEl = rowEl.querySelector('.stage-node');
-      let nodeColor = '#7C8899', nodeBg = 'transparent', nodeBorder = '0 solid transparent', halo = '0px';
+      let iconChar = '●';
+      let iconColor = '#38bdf8';
       if (st.status === 'done') {
-        nodeColor = '#34D399';
-        nodeBg = mixWithDark(nodeColor, 0.18);
-        nodeEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
-      } else if (st.status === 'running' || st.status === 'compacting') {
-        nodeColor = st.status === 'compacting' ? '#A78BFA' : (isStalled ? '#FBBF24' : '#38BDF8');
-        nodeBg = mixWithDark(nodeColor, 0.18);
-        halo = `0 0 0 3px ${hexToRgba(nodeColor, 0.18)}`;
-        const spinAnim = isStalled ? 'none' : 'agy-spin .9s linear infinite';
-        nodeEl.innerHTML = `<div style="width:10px; height:10px; box-sizing:border-box; border-radius:50%; border:2px solid ${hexToRgba(nodeColor, 0.25)}; border-top-color:${nodeColor}; animation:${spinAnim};"></div>`;
+        iconChar = '✓';
+        iconColor = '#34d399';
+      } else if (st.status === 'compacting') {
+        iconChar = '✦';
+        iconColor = '#c084fc';
+      } else if (st.status === 'error') {
+        iconChar = '✕';
+        iconColor = '#fb7185';
       } else if (st.status === 'stopped') {
-        nodeColor = '#FB7185';
-        nodeBg = mixWithDark(nodeColor, 0.18);
-        nodeEl.innerHTML = `<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>`;
-      } else {
-        nodeColor = '#556070';
-        nodeBg = '#10141A';
-        nodeBorder = '1px dashed #556070';
-        nodeEl.innerHTML = '';
-      }
-      nodeEl.style.backgroundColor = nodeBg;
-      nodeEl.style.borderColor = nodeBorder;
-      nodeEl.style.color = nodeColor;
-      nodeEl.style.boxShadow = halo;
-
-      rowEl.querySelector('.stage-idx').textContent = st.index;
-      rowEl.querySelector('.stage-name').textContent = st.title;
-
-      const badgeWrap = rowEl.querySelector('.stage-badge-wrap');
-      if (st.badge) {
-        badgeWrap.innerHTML = `<span class="stage-badge ${hasSubs ? 'clickable' : ''}">${st.badge}</span>`;
-      } else {
-        badgeWrap.innerHTML = '';
+        iconChar = '■';
+        iconColor = '#fb7185';
+      } else if (st.status === 'running' && isStalled) {
+        iconChar = '⚠';
+        iconColor = '#fbbf24';
+      } else if (st.status === 'pending') {
+        iconChar = '○';
+        iconColor = '#64748b';
       }
 
-      const expandWrap = rowEl.querySelector('.stage-expand-wrap');
-      if (hasSubs) {
-        const d = isSubOpen ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6';
-        expandWrap.innerHTML = `<svg class="stage-expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
-      } else {
-        expandWrap.innerHTML = '';
-      }
+      const badgeText =
+        st.hasRealProgress && st.progress !== null
+          ? `${st.progress}%`
+          : st.badge || (st.status === 'done' ? '完成' : '执行中');
+      const isErrBadge = st.status === 'error' || st.status === 'stopped' || /^Exit\s+[1-9]/.test(badgeText);
+      const durStr = formatDuration(st.durationSec, st.status);
+      const chevronSuffix = hasSubs ? (isSubOpen ? ' ▾' : ' ▸') : '';
 
-      const durEl = rowEl.querySelector('.stage-dur');
-      const durText = formatDuration(st.durationSec, st.status);
-      if (st.hasRealProgress && st.progress !== null) {
-        durEl.textContent = `${st.progress}%`;
-        durEl.style.color = acc;
-      } else {
-        durEl.textContent = durText;
-        durEl.style.color = st.status === 'running' ? acc : '#8A95A6';
-      }
+      const renderSig = `${st.index}|${st.status}|${iconChar}|${st.title}|${badgeText}|${durStr}|${isSubOpen ? 1 : 0}|${hasSubs ? st.subSteps.length : 0}`;
+      if (cardEl.dataset.renderSig !== renderSig) {
+        cardEl.dataset.renderSig = renderSig;
+        const subsHtml =
+          hasSubs && isSubOpen
+            ? `<div class="stage-substeps">${st.subSteps
+                .map((sub, sIdx, arr) => {
+                  const branch = sIdx === arr.length - 1 ? '└─' : '├─';
+                  const subBadge = sub.badge ? ` ${sub.badge}` : '';
+                  return `<div class="stage-substep-row">${branch} (${sIdx + 1}/${arr.length}) ${escapeHtml(sub.title)}${escapeHtml(subBadge)} (${sub.durationSec || 1}s)</div>`;
+                })
+                .join('')}</div>`
+            : '';
 
-      const subBox = groupEl.querySelector('.substeps-box');
-      subBox.className = isSubOpen ? 'substeps-box open' : 'substeps-box';
-      if (isSubOpen && hasSubs) {
-        subBox.innerHTML = st.subSteps.map((sub, sIdx, arr) => `
-          <div class="substep-item">
-            <span class="substep-branch">${sIdx === arr.length - 1 ? '└─' : '├─'}</span>
-            <span>(${sIdx + 1}/${arr.length})</span>
-            <span class="substep-text">${sub.title} ${sub.badge || ''}</span>
-            <span>${sub.durationSec}s</span>
+        cardEl.innerHTML = `
+          <div class="stage-main-row">
+            <span class="stage-icon" style="color:${iconColor}">${iconChar}</span>
+            <span class="stage-title">${escapeHtml(st.title)}${chevronSuffix}</span>
+            <span class="stage-badge${isErrBadge ? ' badge-error' : ''}">${escapeHtml(badgeText)}</span>
+            <span class="stage-dur">${durStr}</span>
           </div>
-        `).join('');
-      } else {
-        subBox.innerHTML = '';
+          ${subsHtml}
+        `;
       }
     });
 
     const shouldAutoScrollBottom =
       !options.preserveScroll &&
-      (convChanged || (snap.stages.length > lastStageCount && wasNearBottom && pinnedStageIndex === null && expandedSubstepIndices.size === 0));
+      (convChanged ||
+        (snap.stages.length > lastStageCount &&
+          wasNearBottom &&
+          pinnedStageIndex === null &&
+          expandedSubstepIndices.size === 0));
 
     lastRenderedConvId = snap.convId;
     lastStageCount = snap.stages.length;
@@ -233,12 +191,15 @@ function renderSnapshot(snap, options = {}) {
 
   updateCmdPreviewBar(snap);
 
-  const newLogText = snap.logTail || '暂无输出';
+  // Real-Time Log Stream
+  const newLogText = snap.logTail || '暂无命令输出';
   if (newLogText !== lastRenderedLogTail) {
-    const logNearBottom = logTerminal.scrollHeight - logTerminal.scrollTop - logTerminal.clientHeight <= 24;
+    const logNearBottom = logContent.scrollHeight - logContent.scrollTop - logContent.clientHeight <= 24;
     lastRenderedLogTail = newLogText;
-    logTerminal.textContent = newLogText;
-    if (logNearBottom) logTerminal.scrollTop = logTerminal.scrollHeight;
+    logContent.textContent = newLogText;
+    if (logNearBottom) {
+      logContent.scrollTop = logContent.scrollHeight;
+    }
   }
 
   renderFooterState(snap, isDoneState);

@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { BRAIN_DIR, watchdogHistory, customTitles } = require('./config-state.cjs');
+const { BRAIN_DIR, watchdogHistory } = require('./config-state.cjs');
 const { isUuidDir, deriveSmartTaskTitle, parseLogProgress } = require('./parser-utils.cjs');
 const { extractTranscriptData } = require('./stage-extractor.cjs');
 
@@ -90,7 +90,9 @@ function parseConversation(conv, allConvs) {
     lastCompactedFrom,
     lastCompactedTo,
     bytesSinceLastPlanner,
-    mergedStages
+    mergedStages,
+    isSubagent,
+    spawnedSubagents
   } = extractTranscriptData(conv);
 
   // 4. Inspect .system_generated/tasks/*.log
@@ -225,7 +227,6 @@ function parseConversation(conv, allConvs) {
   }
 
   const cleanTitle = deriveSmartTaskTitle(conv.id, allUserPrompts, stages);
-  const isCustomTitle = Boolean(conv.id && customTitles[conv.id]);
 
   const totalStages = stages.length;
   const completedStages = stages.filter(s => s.status === 'done').length;
@@ -303,7 +304,8 @@ function parseConversation(conv, allConvs) {
     convId: conv.id,
     maxStepIndex: currentMaxStepIdx,
     title: cleanTitle,
-    isCustomTitle,
+    isSubagent: Boolean(isSubagent),
+    spawnedSubagents: spawnedSubagents || {},
     initialPrompt: initialTaskPrompt || '',
     fullPrompt: latestRawPrompt || mainFullPrompt || '',
     latestPrompt: latestFollowup,

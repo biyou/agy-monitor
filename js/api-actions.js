@@ -11,30 +11,18 @@ function syncWindowHeight() {
 
 function resetStopConfirmation() {
   awaitingStopConfirm = false;
-  stopOrHideBtn.classList.remove('confirming');
+  stopBtn.classList.remove('confirming');
+  stopBtn.textContent = '■';
+  stopBtn.title = '二次点击确认停止任务';
   if (stopConfirmTimer) {
     clearTimeout(stopConfirmTimer);
     stopConfirmTimer = null;
-  }
-  if (latestSnap) updateStopOrHideButton(latestSnap);
-}
-
-function updateStopOrHideButton(snap) {
-  if (awaitingStopConfirm) return;
-  if (snap.isRunning || snap.isCompacting) {
-    stopOrHideBtn.className = 'ctrl-btn stop-mode';
-    stopOrHideIcon.innerHTML = STOP_SQUARE_SVG;
-    stopOrHideBtn.title = '停止当前正在运行的任务（需二次点击确认，防误触）';
-  } else {
-    stopOrHideBtn.className = 'ctrl-btn';
-    stopOrHideIcon.innerHTML = TRAY_MINIMIZE_SVG;
-    stopOrHideBtn.title = '隐藏到系统托盘（左键单击右下角托盘图标可恢复）';
   }
 }
 
 async function selectConversation(choice, labelText) {
   currentConvChoice = choice;
-  convTriggerLabel.textContent = labelText;
+  convBtnText.textContent = labelText;
   expandedSubstepIndices.clear();
   pinnedStageIndex = null;
   await fetch('/api/select-conv', {
@@ -45,15 +33,22 @@ async function selectConversation(choice, labelText) {
   pollStatus();
 }
 
-async function doWakeup(reason) {
+async function doWakeup(reason, targetConvId = null, targetTitle = '') {
   try {
     const res = await fetch('/api/wakeup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason, forceCopy: false })
+      body: JSON.stringify({
+        convId: targetConvId || (latestSnap && latestSnap.convId) || undefined,
+        reason,
+        forceCopy: false
+      })
     });
     const data = await res.json();
-    showToast(data.message, !data.sentViaAgentApi, data.promptText);
+    const msg = targetTitle
+      ? `⚡ 后台自动唤醒「${targetTitle.slice(0, 12)}」: ${data.message}`
+      : data.message;
+    showToast(msg, !data.sentViaAgentApi, data.promptText);
     pollStatus();
   } catch (e) {
     showToast('唤醒请求失败: ' + e.message, true);

@@ -22,26 +22,6 @@ const runtimeState = {
 
 const watchdogHistory = new Map(); // convId -> { wakeupCount, lastWakeupTime }
 const manuallyStoppedConvs = new Map(); // convId -> { stepIndex, stoppedAtMs }
-const CUSTOM_TITLES_FILE = path.join(ROOT_DIR, 'custom-titles.json');
-let customTitles = {};
-try {
-  if (fs.existsSync(CUSTOM_TITLES_FILE)) {
-    customTitles = JSON.parse(fs.readFileSync(CUSTOM_TITLES_FILE, 'utf-8') || '{}');
-  }
-} catch (_) {}
-
-function saveCustomTitle(convId, newTitle) {
-  if (!convId) return;
-  const trimmed = (newTitle || '').trim();
-  if (trimmed) {
-    customTitles[convId] = trimmed.slice(0, 36);
-  } else {
-    delete customTitles[convId];
-  }
-  try {
-    fs.writeFileSync(CUSTOM_TITLES_FILE, JSON.stringify(customTitles, null, 2), 'utf-8');
-  } catch (_) {}
-}
 
 // Generate a valid 32x32 RGBA PNG buffer in pure Node.js for the Windows System Tray icon
 const crcTable = new Uint32Array(256);
@@ -135,8 +115,5 @@ module.exports = {
   runtimeState,
   watchdogHistory,
   manuallyStoppedConvs,
-   CUSTOM_TITLES_FILE,
-  customTitles,
-  saveCustomTitle,
   createTrayPngBuffer
 };

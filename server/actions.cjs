@@ -9,10 +9,41 @@ const {
 } = require('./config-state.cjs');
 const { listConversations, parseConversation } = require('./collector.cjs');
 
+function formatShortAgo(mtimeMs) {
+  if (!mtimeMs) return '';
+  const diffSec = Math.max(0, Math.floor((Date.now() - mtimeMs) / 1000));
+  if (diffSec < 60) return `${diffSec}s前`;
+  const mins = Math.floor(diffSec / 60);
+  if (mins < 60) return `${mins}m前`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h前`;
+}
+
 function getCurrentSnapshot() {
   const convs = listConversations();
-  const parsedTop = convs.slice(0, 6).map(c => {
-    const snap = parseConversation(c, []);
+  const rawParsed = convs.slice(0, 6).map(c => ({
+    conv: c,
+    snap: parseConversation(c, [])
+  }));
+
+  // Cross-reference parent invoke_subagent records to tag subagent conversations accurately
+  const subagentRoleMap = new Map();
+  for (const item of rawParsed) {
+    const mapObj = item.snap.spawnedSubagents || {};
+    for (const [subId, role] of Object.entries(mapObj)) {
+      subagentRoleMap.set(subId.toLowerCase(), role);
+    }
+  }
+
+  const parsedTop = rawParsed.map(({ conv: c, snap }) => {
+    const lowerId = c.id.toLowerCase();
+    const isSub = Boolean(snap.isSubagent || subagentRoleMap.has(lowerId));
+    const subRole = subagentRoleMap.get(lowerId) || '';
+    snap.isSubagent = isSub;
+    if (isSub && subRole && snap.title.startsWith('会话 ')) {
+      snap.title = subRole;
+    }
+
     const tag = snap.isStopped
       ? '[已停止]'
       : snap.isCompacting
@@ -20,11 +51,38 @@ function getCurrentSnapshot() {
       : snap.isRunning
       ? '[运行中]'
       : '[已就绪]';
-    const shortTitle = (snap.title || c.id.slice(0, 8)).slice(0, 15);
+    const shortTitle = (snap.title || c.id.slice(0, 8)).slice(0, 32);
+    const finishMs = snap.completedAtMs || c.mtimeMs || 0;
+    const isRecentlyFinished =
+      !snap.isRunning &&
+      !snap.isCompacting &&
+      snap.totalStages > 0 &&
+      Date.now() - finishMs <= 180000;
+
     return {
       conv: c,
       snap,
-      meta: { id: c.id, label: `${tag} ${shortTitle}` }
+      meta: {
+        id: c.id,
+        shortId: c.id.slice(0, 6),
+        title: snap.title || c.id.slice(0, 8),
+        label: `${isSub ? '[子] ' : ''}${shortTitle}`,
+        fullLabel: `${tag} ${isSub ? '[子] ' : ''}${shortTitle}`,
+        isSubagent: isSub,
+        subagentRole: subRole,
+        state: snap.state,
+        isRunning: snap.isRunning,
+        isCompacting: snap.isCompacting,
+        isStopped: snap.isStopped,
+        isRecentlyFinished,
+        overallProgress: snap.overallProgress || 0,
+        completedStages: snap.completedStages || 0,
+        totalStages: snap.totalStages || 0,
+        silenceSeconds: snap.silenceSeconds || 0,
+        completedAtMs: snap.completedAtMs || null,
+        mtimeMs: c.mtimeMs || 0,
+        time: formatShortAgo(c.mtimeMs)
+      }
     };
   });
 
@@ -39,11 +97,26 @@ function getCurrentSnapshot() {
     if (found) chosen = found;
   }
 
+  // Parallel task bar candidates: active (running/compacting) OR finished within last 3 minutes
+  const parallelCandidates = allMeta.filter(
+    m => m.isRunning || m.isCompacting || m.isRecentlyFinished
+  );
+  if (
+    chosen &&
+    parallelCandidates.length >= 1 &&
+    !parallelCandidates.some(m => m.id === chosen.conv.id)
+  ) {
+    parallelCandidates.unshift(chosen.meta);
+  }
+
   if (chosen) {
     chosen.snap.conversations = allMeta;
+    chosen.snap.parallelTasks = parallelCandidates;
     return chosen.snap;
   }
-  return parseConversation(convs[0], allMeta);
+  const fallback = parseConversation(convs[0], allMeta);
+  fallback.parallelTasks = parallelCandidates;
+  return fallback;
 }
 
 // Respect user clipboard: only write to clipboard if explicitly requested or if agentapi fails

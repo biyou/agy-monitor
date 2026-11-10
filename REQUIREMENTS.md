@@ -28,12 +28,20 @@
 
 ## 3. 核心功能需求明细
 
-### 3.1 会话发现与智能追踪（[`server/collector.cjs`](file:///d:/ai/tools/agy-monitor/server/collector.cjs)、[`server/actions.cjs`](file:///d:/ai/tools/agy-monitor/server/actions.cjs)）
-1. **活跃会话扫描**：
+### 3.1 会话发现、多任务并行标签栏与智能追踪（[`server/collector.cjs`](file:///d:/ai/tools/agy-monitor/server/collector.cjs)、[`server/actions.cjs`](file:///d:/ai/tools/agy-monitor/server/actions.cjs)、[`js/render-widgets.js`](file:///d:/ai/tools/agy-monitor/js/render-widgets.js)）
+1. **活跃会话扫描与子智能体识别**：
    - 自动扫描 `BRAIN_DIR` 下所有 UUID 格式的会话目录，按 `transcript.jsonl` 最后修改时间（`mtimeMs`）降序排列，取最近 12 个会话，并在下拉列表中展示前 6 个会话及其状态标签（`[运行中]`、`[压缩中]`、`[已停止]`、`[已就绪]`）。
-2. **双追踪策略**：
+   - **子智能体（Subagent）自动识别**：通过交叉比对父会话 `invoke_subagent` 输出的 UUID 以及会话输入源特征（`isSubagent`），自动识别子智能体会话并标记 `[子]` 徽标与角色名称。
+2. **顶部多任务胶囊标签栏（Multi-Task Pill Tabs）**：
+   - **自适应显隐**：当同时存在 `≥ 2` 个并行活跃任务或刚完成的任务时，在 `74px` 顶栏下方自动浮现 `28px` 高的紧凑多任务胶囊栏（`#multiTaskBar`）；单任务时自动隐藏，零空间占用。
+   - **入驻与 3 分钟驻留策略**：所有处于 `isRunning` / `isCompacting` 的任务实时入驻；刚完成或手动停止的任务自动驻留 **3 分钟**（显示翠绿 `✓ 完成` 或玫红 `■ 已停`），并提供 `×` 按钮支持手动关闭标签；若任务再次运行则自动恢复显示。
+   - **跨标签卡顿琥珀告警**：当后台未选中的并行任务发生静默卡顿时，其胶囊标签自动切换为琥珀色闪烁边框并显示 `⚠ Xs`，点击即可秒切至该任务详情，且不会强行打断当前前台视图。
+3. **74px 折叠态「并行微章」与点击轮播**：
+   - 在 `520×74` 迷你胶囊折叠模式下，若存在 `≥ 2` 个并行任务，顶栏会话按钮自动切换为高对比微章（正常显示 `⚡ N并行 (X/N) ↻`，后台有卡顿时琥珀闪烁显示 `⚠ M卡顿/N并行 ↻`）。
+   - 左键单击直接轮播切换至下一个并行任务，右键单击展开完整会话菜单与面板。
+4. **双追踪策略**：
    - **自动追踪模式（`auto`，默认）**：优先锁定当前处于 `isRunning` 或 `isCompacting` 状态的活跃会话；若均空闲，则展示最近更新的会话。
-   - **手动锁定模式**：用户可通过下拉菜单（支持鼠标点击及 `ArrowUp` / `ArrowDown` / `Enter` / `Escape` 键盘导航）指定监控某个特定会话 UUID。
+   - **手动锁定模式**：用户可通过顶部多任务胶囊栏或下拉菜单（支持鼠标点击及 `ArrowUp` / `ArrowDown` / `Enter` / `Escape` 键盘导航）指定监控某个特定会话 UUID。
 
 ---
 
@@ -90,9 +98,9 @@
 1. **静默时长监测与可视化倒计时条**：
    - 综合 `transcript.jsonl` 修改时间、最新 `task-*.log` 修改时间与最后步骤时间戳计算静默秒数 `silenceSeconds`。
    - 底部 3px 静默倒计时条（`silenceBarFill`）随 `silenceSeconds / watchdogThreshold` 动态增长，并在 `50%`（琥珀色）、`85%`（红色）阶梯变色。
-2. **可配置卡死阈值与自动重调**：
-   - 支持切换 4 档策略：`30s`、`60s（推荐，默认）`、`120s`、`仅告警不自动唤醒（0s）`。
-   - 当 `silenceSeconds >= watchdogThreshold` 且距上次自动唤醒超过 `15s` 冷却期时，自动调用 `/api/wakeup` 触发唤醒。
+2. **可配置卡死阈值与全局后台看门狗巡检**：
+   - 支持切换 4 档策略：`60s`、`120s（推荐，默认）`、`240s`、`仅告警不自动唤醒（0s）`。
+   - **多任务全局后台巡检**：所有正在运行的并行会话（含未处于当前焦点的后台会话）均独立计算 `silenceSeconds` 与会话级 `15s` 唤醒冷却时间；当任意会话满足 `silenceSeconds >= watchdogThreshold` 时自动调用 `/api/wakeup` 下发带 `convId` 的针对性唤醒指令，并在前台弹出轻量 Toast 提示。
    - **防打断保护**：当会话处于 `isCompacting`（上下文压缩）状态时，自动暂停超时重调并锁定「⚡ 立即重调」按钮，防止打断模型上下文压缩。
 3. **双通道唤醒与停止指令下发**：
    - **唤醒（`triggerWakeup`）**：优先调用 `agentapi.bat send-message <convId> <prompt>` 发送巡检恢复指令；仅当 `agentapi.bat` 不存在或调用失败时，才将指令兜底写入系统剪贴板并在 Toast 中提供「复制指令」按钮（零剪贴板污染原则）。

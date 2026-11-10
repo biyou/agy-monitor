@@ -61,7 +61,7 @@ if (electron && electron.app) {
         } else if (snap.isCompacting) {
           iconKey = 'compacting';
           stateLabel = 'Compacting';
-        } else if (snap.isRunning && snap.silenceSeconds >= 25) {
+        } else if (snap.isRunning && snap.silenceSeconds >= 45) {
           iconKey = 'stalled';
           stateLabel = `疑似卡顿 ${snap.silenceSeconds}s`;
         } else if (snap.isRunning) {
@@ -94,8 +94,8 @@ if (electron && electron.app) {
               }).show();
             }
           }
-          if (snap.isRunning && !snap.isCompacting && snap.silenceSeconds >= 60) {
-            const stallKey = `${snap.convId}:${Math.floor(snap.silenceSeconds / 60)}`;
+          if (snap.isRunning && !snap.isCompacting && snap.silenceSeconds >= 120) {
+            const stallKey = `${snap.convId}:${Math.floor(snap.silenceSeconds / 120)}`;
             if (stallKey !== lastNotifiedStallConv) {
               lastNotifiedStallConv = stallKey;
               new Notification({
@@ -221,13 +221,26 @@ if (electron && electron.app) {
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
       mainWindow.loadURL(`http://127.0.0.1:${PORT}/`);
 
-      // Hot-reload index.html automatically when modified
-      const watchedHtml = path.join(__dirname, 'index.html');
-      fs.watchFile(watchedHtml, { interval: 800 }, (curr, prev) => {
-        if (curr.mtimeMs !== prev.mtimeMs && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.reloadIgnoringCache();
+      // Hot-reload frontend automatically when index.html, css/*, or js/* are modified
+      let reloadTimer = null;
+      const scheduleReload = () => {
+        if (reloadTimer) clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.reloadIgnoringCache();
+          }
+        }, 350);
+      };
+      for (const watchTarget of ['', 'css', 'js']) {
+        const dirPath = path.join(__dirname, watchTarget);
+        if (fs.existsSync(dirPath)) {
+          fs.watch(dirPath, (_eventType, filename) => {
+            if (filename && /\.(html|css|js)$/i.test(filename)) {
+              scheduleReload();
+            }
+          });
         }
-      });
+      }
 
       tray = new Tray(trayIcons.idle);
       rebuildTrayMenu(getCurrentSnapshot());

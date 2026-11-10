@@ -10,7 +10,7 @@
 - `index.html`：前端页面 DOM 骨架，按顺序引入 `./css/*` 样式表与 `./js/*` 全局脚本。
 
 ## 后端模块 (`./server/*.cjs`)
-- `server/config-state.cjs`：全局路径常量（`BRAIN_DIR`、`AGENTAPI_BAT`、`PORT`）、运行时状态（会话选择、看门狗记录、自定义标题持久化）及纯 Node 托盘 PNG 图标生成器。
+- `server/config-state.cjs`：全局路径常量（`BRAIN_DIR`、`AGENTAPI_BAT`、`PORT`）、运行时状态（会话选择、看门狗记录）及纯 Node 托盘 PNG 图标生成器。
 - `server/parser-utils.cjs`：文本清洗、用户指令提取、智能任务标题推导、工具类型分类与英文阶段名中文化工具函数。
 - `server/stage-extractor.cjs`：读取并解析 `transcript.jsonl`，提取用户 Prompt、后台任务状态、Context Token 遥测及连续同类文件操作合并（`mergedStages`）。
 - `server/collector.cjs`：扫描最近活跃会话列表（`listConversations`）、巡检 `.system_generated/tasks/*.log` 进度，汇总生成单会话完整监控快照（`parseConversation`）。

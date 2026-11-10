@@ -1,95 +1,63 @@
+// Toast copy fallback button
 toastCopyBtn.addEventListener('click', () => {
   if (lastFallbackPrompt) {
     navigator.clipboard.writeText(lastFallbackPrompt);
-    showToast('已复制指令到剪贴板');
+    showToast('✓ 已复制唤醒指令至剪贴板');
   }
 });
 
-// 标题重命名
-function finishTitleEdit(save = true) {
-  if (!isEditingTitle) return;
-  isEditingTitle = false;
-  const newTitle = titleEditInput.value.trim();
-  titleEditInput.style.display = 'none';
-  mainTitle.style.display = '';
-  if (save && latestSnap && latestSnap.convId) {
-    fetch('/api/rename-title', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ convId: latestSnap.convId, title: newTitle })
-    })
-      .then(() => {
-        showToast(newTitle ? `已更新标题为「${newTitle}」` : '已恢复默认标题');
-        pollStatus();
-      })
-      .catch(() => {});
-  }
-}
+// Hover 3-line Tooltip Overlay (for Title & Context Pie Pill when expanded)
+titleText.addEventListener('mouseenter', () => {
+  if (isCollapsed || !currentTitleTipHtml) return;
+  tooltipOverlay.innerHTML = currentTitleTipHtml;
+  tooltipOverlay.style.display = 'flex';
+});
 
-mainTitle.addEventListener('dblclick', e => {
+titleText.addEventListener('mouseleave', () => {
+  tooltipOverlay.style.display = 'none';
+});
+
+ctxPiePill.addEventListener('mouseenter', () => {
+  if (isCollapsed || !currentCtxTipHtml) return;
+  tooltipOverlay.innerHTML = currentCtxTipHtml;
+  tooltipOverlay.style.display = 'flex';
+});
+
+ctxPiePill.addEventListener('mouseleave', () => {
+  tooltipOverlay.style.display = 'none';
+});
+
+// Collapse / Expand 520x74 Mini-Capsule
+collapseBtn.addEventListener('click', e => {
   e.stopPropagation();
-  if (!latestSnap) return;
-  isEditingTitle = true;
-  titleEditInput.value = latestSnap.title || '';
-  mainTitle.style.display = 'none';
-  titleEditInput.style.display = 'inline-block';
-  titleEditInput.focus();
-  titleEditInput.select();
-});
-
-titleEditInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    finishTitleEdit(true);
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    finishTitleEdit(false);
-  }
-});
-
-titleEditInput.addEventListener('blur', () => {
-  finishTitleEdit(true);
-});
-
-// 折叠 / 展开
-function toggleCollapse() {
   isCollapsed = !isCollapsed;
-  expandedContainer.style.display = isCollapsed ? 'none' : 'flex';
-  collapsedContainer.style.display = isCollapsed ? 'flex' : 'none';
-  syncWindowHeight();
-}
-
-collapseBtn.addEventListener('click', toggleCollapse);
-miniExpandBtn.addEventListener('click', toggleCollapse);
-
-// 托盘最小化
-function doHideToTray() {
-  fetch('/api/hide-to-tray', { method: 'POST' }).catch(() => {});
-}
-
-hideToTrayBtn.addEventListener('click', doHideToTray);
-miniHideToTrayBtn.addEventListener('click', doHideToTray);
-
-// 停止任务逻辑（二次点击确认机制）
-function resetStopConfirmation() {
-  awaitingStopConfirm = false;
-  stopTaskBtn.classList.remove('confirming');
-  stopTaskBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>`;
-  stopTaskBtn.title = '停止当前任务（二次点击确认）';
-  miniStopBtn.classList.remove('confirming');
-  miniStopBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>`;
-  if (stopConfirmTimer) {
-    clearTimeout(stopConfirmTimer);
-    stopConfirmTimer = null;
+  hudWin.classList.toggle('is-collapsed', isCollapsed);
+  if (isCollapsed) {
+    tooltipOverlay.style.display = 'none';
+    convMenu.style.display = 'none';
+    convDropdownBtn.classList.remove('active');
   }
-}
+  syncWindowHeight();
+  if (latestSnap) {
+    updateContextPill(latestSnap);
+    renderMultiTaskBar(latestSnap);
+  }
+});
 
-async function handleStopTask(btn) {
+// Minimize to System Tray
+hideBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  fetch('/api/hide-to-tray', { method: 'POST' }).catch(() => {});
+});
+
+// 2-Step Confirmation Stop Button
+stopBtn.addEventListener('click', async e => {
+  e.stopPropagation();
   if (!latestSnap || (!latestSnap.isRunning && !latestSnap.isCompacting)) return;
   if (!awaitingStopConfirm) {
     awaitingStopConfirm = true;
-    btn.classList.add('confirming');
-    btn.textContent = '确认停止?';
+    stopBtn.classList.add('confirming');
+    stopBtn.textContent = '确认停止?';
     stopConfirmTimer = setTimeout(resetStopConfirmation, 2600);
     return;
   }
@@ -101,45 +69,64 @@ async function handleStopTask(btn) {
       body: JSON.stringify({ convId: latestSnap.convId })
     });
     const data = await res.json();
-    showToast(data.message, true);
+    showToast(data.message || '■ 已下发停止指令', true);
     pollStatus();
   } catch (err) {
     showToast('停止任务失败: ' + err.message, true);
   }
-}
-
-stopTaskBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  handleStopTask(stopTaskBtn);
 });
 
-miniStopBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  handleStopTask(miniStopBtn);
-});
-
-// 滚动提示
+// Scroll-to-Top Hint
 stageList.addEventListener('scroll', updateScrollTopHint);
 scrollTopHint.addEventListener('click', () => {
   stageList.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
-// 会话下拉弹出与键盘导航
-convTrigger.addEventListener('click', e => {
+// Session Selector Dropdown, 74px Collapsed Parallel Cycle & Keyboard Navigation
+convDropdownBtn.addEventListener('click', e => {
   e.stopPropagation();
+  if (isCollapsed && visibleParallelTasks.length >= 2 && latestSnap) {
+    const curIdx = visibleParallelTasks.findIndex(t => t.id === latestSnap.convId);
+    const nextIdx = (curIdx + 1) % visibleParallelTasks.length;
+    const nextTask = visibleParallelTasks[nextIdx];
+    if (nextTask) {
+      selectConversation(nextTask.id, nextTask.label || nextTask.title);
+      showToast(`↻ 已切换并行任务 (${nextIdx + 1}/${visibleParallelTasks.length}): ${nextTask.title}`);
+      return;
+    }
+  }
+  if (isCollapsed) {
+    isCollapsed = false;
+    hudWin.classList.remove('is-collapsed');
+    syncWindowHeight();
+    if (latestSnap) renderMultiTaskBar(latestSnap);
+  }
   const isOpen = convMenu.style.display !== 'none';
   convMenu.style.display = isOpen ? 'none' : 'flex';
-  convTrigger.classList.toggle('active', !isOpen);
+  convDropdownBtn.classList.toggle('active', !isOpen);
+});
+
+convDropdownBtn.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (isCollapsed) {
+    isCollapsed = false;
+    hudWin.classList.remove('is-collapsed');
+    syncWindowHeight();
+    if (latestSnap) renderMultiTaskBar(latestSnap);
+  }
+  convMenu.style.display = 'flex';
+  convDropdownBtn.classList.add('active');
 });
 
 document.addEventListener('click', () => {
   convMenu.style.display = 'none';
-  convTrigger.classList.remove('active');
+  convDropdownBtn.classList.remove('active');
 });
 
 document.addEventListener('keydown', e => {
   if (convMenu.style.display !== 'none') {
-    const items = [...convMenuList.querySelectorAll('.session-item')];
+    const items = [...convMenuList.querySelectorAll('.conv-item')];
     if (!items.length) return;
     let idx = items.findIndex(el => el.classList.contains('focused') || el.classList.contains('active'));
     if (e.key === 'ArrowDown') {
@@ -160,83 +147,81 @@ document.addEventListener('keydown', e => {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       convMenu.style.display = 'none';
-      convTrigger.classList.remove('active');
+      convDropdownBtn.classList.remove('active');
     }
   }
 });
 
-// 日志抽屉展开/收起
-function toggleLogDrawer() {
+// Real-Time Log Stream Drawer
+logBtn.addEventListener('click', () => {
   isLogOpen = !isLogOpen;
-  logDrawer.style.display = isLogOpen ? 'flex' : 'none';
-  logPillBtn.classList.toggle('active', isLogOpen);
-  logDrawerArrow.style.transform = isLogOpen ? 'rotate(180deg)' : 'none';
-}
-
-logPillBtn.addEventListener('click', toggleLogDrawer);
-closeLogBtn.addEventListener('click', toggleLogDrawer);
-
-// 4 档阈值切换
-thresholdSegment.querySelectorAll('.seg-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    thresholdSegment.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    watchdogThreshold = parseInt(btn.dataset.val, 10);
-    pollStatus();
-  });
+  logDrawer.classList.toggle('is-open', isLogOpen);
+  logBtn.classList.toggle('active', isLogOpen);
 });
 
-wakeupNowBtn.addEventListener('click', () => {
+closeLogBtn.addEventListener('click', () => {
+  isLogOpen = false;
+  logDrawer.classList.remove('is-open');
+  logBtn.classList.remove('active');
+});
+
+notepadBtn.addEventListener('click', () => {
+  fetch('/api/open-log', { method: 'POST' }).catch(() => {});
+});
+
+copyLogBtn.addEventListener('click', () => {
+  if (latestSnap && latestSnap.logTail) {
+    navigator.clipboard.writeText(latestSnap.logTail);
+    showToast('✓ 已将最新日志复制到剪贴板');
+  }
+});
+
+// Preview Bar Actions
+unpinBtn.addEventListener('click', () => {
+  pinnedStageIndex = null;
+  if (latestSnap) renderSnapshot(latestSnap, { preserveScroll: true });
+});
+
+copyPreviewBtn.addEventListener('click', () => {
+  if (currentPreviewRawText) {
+    navigator.clipboard.writeText(currentPreviewRawText);
+    copyPreviewBtn.textContent = '已复制 ✓';
+    setTimeout(() => {
+      copyPreviewBtn.textContent = '复制';
+    }, 1400);
+  }
+});
+
+// Watchdog Threshold Select & Wakeup
+thresholdSel.addEventListener('change', e => {
+  watchdogThreshold = parseInt(e.target.value, 10);
+  pollStatus();
+});
+
+wakeupBtn.addEventListener('click', () => {
   if (latestSnap && latestSnap.isCompacting) return;
   doWakeup('手动点击立即重调');
 });
 
-// 复制总结
+// Copy Turn-Done Summary
 copySummaryBtn.addEventListener('click', () => {
   if (!latestSnap) return;
   const ctx = latestSnap.context || {};
   const curK = Math.round((ctx.currentTokens || latestSnap.estimatedContextTokens || 0) / 1000);
   const lines = [
     `【任务名称】${latestSnap.title}`,
-    `【完成状态】已完成 (${latestSnap.completedStages}/${latestSnap.totalStages})`,
-    `【耗时统计】总耗时 ${formatDuration(latestSnap.elapsedSeconds, 'done')} (步骤执行 ${formatDuration(latestSnap.stepsDurationSec, 'done')}${latestSnap.thinkWaitSec >= 3 ? ' · 思考等待 ' + formatDuration(latestSnap.thinkWaitSec, 'done') : ''})`,
-    `【上下文窗】${curK}k / 256k (${ctx.usagePct || 0}%)${ctx.compactionCount ? ' · 已压缩 ' + ctx.compactionCount + ' 次' : ''}`,
+    `【完成状态】已完成 (${latestSnap.completedStages}/${latestSnap.totalStages} 阶段)`,
+    `【耗时统计】总耗时 ${formatDuration(latestSnap.elapsedSeconds, 'done')} (步骤执行 ${formatDuration(latestSnap.stepsDurationSec, 'done')} · 思考等待 ${formatDuration(latestSnap.thinkWaitSec, 'done')})`,
+    `【上下文窗】~${curK}k / 256k (${ctx.usagePct || 0}%)${ctx.compactionCount ? ' · 已压缩 ' + ctx.compactionCount + ' 次' : ''}`,
     `【阶段明细】`,
     ...(latestSnap.stages || []).map(
       s => `  ${s.index}. [${s.status === 'done' ? '✓' : s.status}] ${s.title}${s.badge ? ' (' + s.badge + ')' : ''} - ${formatDuration(s.durationSec, s.status)}`
     )
   ];
   navigator.clipboard.writeText(lines.join('\n'));
-  showToast('已复制本轮执行摘要到剪贴板');
+  showToast('✓ 已复制结构化回合摘要至剪贴板');
 });
 
-backToActiveBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  pinnedStageIndex = null;
-  if (latestSnap) renderSnapshot(latestSnap, { preserveScroll: true });
-});
-
-copyCmdBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  if (currentPreviewRawText) {
-    navigator.clipboard.writeText(currentPreviewRawText);
-    copyCmdLabel.textContent = '已复制 ✓';
-    setTimeout(() => {
-      copyCmdLabel.textContent = '复制';
-    }, 1400);
-  }
-});
-
-openNotepadBtn.addEventListener('click', () => {
-  fetch('/api/open-log', { method: 'POST' });
-});
-
-copyLogBtn.addEventListener('click', () => {
-  if (latestSnap && latestSnap.logTail) {
-    navigator.clipboard.writeText(latestSnap.logTail);
-    showToast('已将最新日志复制到剪贴板');
-  }
-});
-
+// Start Polling
 pollStatus();
 setInterval(pollStatus, 1000);

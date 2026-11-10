@@ -1,5 +1,3 @@
-const { customTitles } = require('./config-state.cjs');
-
 function isUuidDir(name) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name);
 }
@@ -43,21 +41,21 @@ function cleanSingleObjective(rawPrompt) {
     .replace(/(?:吗|么|吧|呢)[？?！!。.]*$/g, '')
     .trim();
 
-  const firstClause = s.split(/(?:##|。|！|？|\n|；|，)/)[0].trim();
-  if (firstClause.length >= 4 && firstClause.length <= 22) {
+  const firstSentence = s.split(/(?:##|。|！|？|\n|；)/)[0].trim();
+  if (firstSentence.length >= 4 && firstSentence.length <= 48) {
+    return firstSentence;
+  }
+  const firstClause = firstSentence.split(/，/)[0].trim();
+  if (firstClause.length >= 10 && firstClause.length <= 48) {
     return firstClause;
   }
-  return (firstClause || s).slice(0, 20);
+  return (firstSentence || s).slice(0, 45);
 }
 
 // Smart task title derivation:
-// 1. Honor user's manual rename (double-click title) if set.
-// 2. Filter out review/feedback commentary ("这张新截图是...", "参考下面的修改...") and extract the core task goal (<= 20 chars).
-// 3. Fall back to synthesizing from the key deliverable stages when prompts are pure review notes.
+// 1. Filter out review/feedback commentary ("这张新截图是...", "参考下面的修改...") and extract the core task goal (<= 45 chars).
+// 2. Fall back to synthesizing from the key deliverable stages when prompts are pure review notes.
 function deriveSmartTaskTitle(convId, allUserPrompts, stages) {
-  if (convId && customTitles[convId]) {
-    return customTitles[convId];
-  }
   // Find best objective prompt (prefer non-feedback task definitions)
   const objectivePrompts = allUserPrompts.filter(p => !isFeedbackOrChatter(p));
   if (objectivePrompts.length > 0) {
@@ -74,7 +72,7 @@ function deriveSmartTaskTitle(convId, allUserPrompts, stages) {
   if (stages && stages.length > 0) {
     const lastKeyStage = [...stages].reverse().find(st => st.status !== 'pending');
     if (lastKeyStage && lastKeyStage.title) {
-      return lastKeyStage.title.slice(0, 20);
+      return lastKeyStage.title.slice(0, 45);
     }
   }
   return cleanSingleObjective(latestRaw) || `会话 ${(convId || '').slice(0, 8)}`;

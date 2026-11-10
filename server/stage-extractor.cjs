@@ -25,10 +25,15 @@ function extractTranscriptData(conv) {
   let mainFullPrompt = '';
   let latestRawPrompt = '';
   let lastUserStepIdx = -1;
+  let hasExplicitUserRequest = false;
+  const spawnedSubagents = {}; // convId -> role
 
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
     if (s.type === 'USER_INPUT' && s.content) {
+      if (/<USER_REQUEST>/i.test(s.content) || s.source === 'USER_EXPLICIT') {
+        hasExplicitUserRequest = true;
+      }
       const req = extractUserRequest(s.content);
       if (req) {
         allUserPrompts.push(req);
@@ -43,6 +48,7 @@ function extractTranscriptData(conv) {
       }
     }
   }
+  const isSubagent = steps.length > 0 && !hasExplicitUserRequest;
   if (!initialTaskPrompt && allUserPrompts.length > 0) {
     initialTaskPrompt = allUserPrompts[0];
   }
@@ -161,6 +167,12 @@ function extractTranscriptData(conv) {
 
         if (nextStep && nextStep.type === 'GENERIC') {
           const out = nextStep.content || '';
+          if (name === 'invoke_subagent') {
+            const subIdMatch = out.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+            if (subIdMatch) {
+              spawnedSubagents[subIdMatch[1].toLowerCase()] = unquote(args.Role || args.TypeName || '子代理');
+            }
+          }
           const bgMatch = out.match(/background task with task id:\s*([^\s\r\n]+)/i);
           const logMatch = out.match(/tasks\/(task-\d+\.log)/i);
           if (logMatch) logFile = logMatch[1];
@@ -301,7 +313,9 @@ function extractTranscriptData(conv) {
     lastCompactedFrom,
     lastCompactedTo,
     bytesSinceLastPlanner,
-    mergedStages
+    mergedStages,
+    isSubagent,
+    spawnedSubagents
   };
 }
 
