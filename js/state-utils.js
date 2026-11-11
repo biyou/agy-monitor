@@ -22,16 +22,20 @@ let currentTitleTipHtml = '';
 const EXPANDED_WIN_HEIGHT = 400;
 const COLLAPSED_WIN_HEIGHT = 74;
 let lastSentWinHeight = 0;
+let resizeDelayTimer = null;
 let lastRenderedConvId = '';
 let lastRenderedLogTail = null;
 
 // DOM References
 const hudWin = document.getElementById('hudWin');
+const hudBody = document.querySelector('.hud-body');
 const ringFill = document.getElementById('ringFill');
 const ringLabel = document.getElementById('ringLabel');
 const linearBar = document.getElementById('linearBar');
 
 const titleText = document.getElementById('titleText');
+const titleInfoBtn = document.getElementById('titleInfoBtn');
+const ghostBadge = document.getElementById('ghostBadge');
 const followupPill = document.getElementById('followupPill');
 
 const statusCapsule = document.getElementById('statusCapsule');
@@ -45,6 +49,7 @@ const ctxSectorPath = document.getElementById('ctxSectorPath');
 const ctxPctLabel = document.getElementById('ctxPctLabel');
 
 const stopBtn = document.getElementById('stopBtn');
+const stopBtnLabel = document.getElementById('stopBtnLabel');
 const collapseBtn = document.getElementById('collapseBtn');
 const hideBtn = document.getElementById('hideBtn');
 

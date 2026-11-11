@@ -1,18 +1,32 @@
 function syncWindowHeight() {
   const targetH = isCollapsed ? COLLAPSED_WIN_HEIGHT : EXPANDED_WIN_HEIGHT;
-  if (targetH === lastSentWinHeight) return;
-  lastSentWinHeight = targetH;
-  fetch('/api/resize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ width: 520, height: targetH })
-  }).catch(() => {});
+  if (targetH === lastSentWinHeight && !resizeDelayTimer) return;
+  if (resizeDelayTimer) {
+    clearTimeout(resizeDelayTimer);
+    resizeDelayTimer = null;
+  }
+  const sendResize = () => {
+    lastSentWinHeight = targetH;
+    fetch('/api/resize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 520, height: targetH })
+    }).catch(() => {});
+  };
+  if (isCollapsed && lastSentWinHeight !== 0) {
+    resizeDelayTimer = setTimeout(() => {
+      resizeDelayTimer = null;
+      sendResize();
+    }, 215);
+  } else {
+    sendResize();
+  }
 }
 
 function resetStopConfirmation() {
   awaitingStopConfirm = false;
   stopBtn.classList.remove('confirming');
-  stopBtn.textContent = '■';
+  stopBtnLabel.textContent = '';
   stopBtn.title = '二次点击确认停止任务';
   if (stopConfirmTimer) {
     clearTimeout(stopConfirmTimer);

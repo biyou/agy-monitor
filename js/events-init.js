@@ -6,26 +6,32 @@ toastCopyBtn.addEventListener('click', () => {
   }
 });
 
-// Hover 3-line Tooltip Overlay (for Title & Context Pie Pill when expanded)
-titleText.addEventListener('mouseenter', () => {
+// Hover 3-line Tooltip Overlay (for Task Info Badge, Status Capsule & Context Pie Pill when expanded)
+function showTaskDetailTip() {
   if (isCollapsed || !currentTitleTipHtml) return;
+  tooltipOverlay.classList.remove('is-ctx-tip');
   tooltipOverlay.innerHTML = currentTitleTipHtml;
   tooltipOverlay.style.display = 'flex';
-});
+}
 
-titleText.addEventListener('mouseleave', () => {
+function hideTooltipOverlay() {
   tooltipOverlay.style.display = 'none';
-});
+  tooltipOverlay.classList.remove('is-ctx-tip');
+}
+
+titleInfoBtn.addEventListener('mouseenter', showTaskDetailTip);
+titleInfoBtn.addEventListener('mouseleave', hideTooltipOverlay);
+statusCapsule.addEventListener('mouseenter', showTaskDetailTip);
+statusCapsule.addEventListener('mouseleave', hideTooltipOverlay);
 
 ctxPiePill.addEventListener('mouseenter', () => {
   if (isCollapsed || !currentCtxTipHtml) return;
+  tooltipOverlay.classList.add('is-ctx-tip');
   tooltipOverlay.innerHTML = currentCtxTipHtml;
   tooltipOverlay.style.display = 'flex';
 });
 
-ctxPiePill.addEventListener('mouseleave', () => {
-  tooltipOverlay.style.display = 'none';
-});
+ctxPiePill.addEventListener('mouseleave', hideTooltipOverlay);
 
 // Collapse / Expand 520x74 Mini-Capsule
 collapseBtn.addEventListener('click', e => {
@@ -33,14 +39,13 @@ collapseBtn.addEventListener('click', e => {
   isCollapsed = !isCollapsed;
   hudWin.classList.toggle('is-collapsed', isCollapsed);
   if (isCollapsed) {
-    tooltipOverlay.style.display = 'none';
+    hideTooltipOverlay();
     convMenu.style.display = 'none';
     convDropdownBtn.classList.remove('active');
   }
   syncWindowHeight();
   if (latestSnap) {
-    updateContextPill(latestSnap);
-    renderMultiTaskBar(latestSnap);
+    renderSnapshot(latestSnap, { preserveScroll: true });
   }
 });
 
@@ -57,7 +62,7 @@ stopBtn.addEventListener('click', async e => {
   if (!awaitingStopConfirm) {
     awaitingStopConfirm = true;
     stopBtn.classList.add('confirming');
-    stopBtn.textContent = '确认停止?';
+    stopBtnLabel.textContent = '确认停止?';
     stopConfirmTimer = setTimeout(resetStopConfirmation, 2600);
     return;
   }
@@ -82,6 +87,37 @@ scrollTopHint.addEventListener('click', () => {
   stageList.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
+// Delegated Multi-Task Pill Tabs Click Handler
+multiTaskBar.addEventListener('click', e => {
+  const closeEl = e.target.closest('[data-close-id]');
+  if (closeEl) {
+    e.stopPropagation();
+    const cid = closeEl.getAttribute('data-close-id');
+    dismissedParallelIds.add(cid);
+    if (latestSnap && cid === latestSnap.convId && visibleParallelTasks.length > 1) {
+      const nextTask = visibleParallelTasks.find(x => x.id !== cid);
+      if (nextTask) selectConversation(nextTask.id, nextTask.label || nextTask.title);
+    } else if (latestSnap) {
+      renderMultiTaskBar(latestSnap);
+    }
+    return;
+  }
+  const tabEl = e.target.closest('.task-pill-tab');
+  if (tabEl && tabEl.dataset.taskId) {
+    selectConversation(tabEl.dataset.taskId, tabEl.dataset.taskLabel || tabEl.dataset.taskId);
+  }
+});
+
+// Delegated Session Menu Click Handler
+convMenuList.addEventListener('click', e => {
+  e.stopPropagation();
+  const row = e.target.closest('.conv-item');
+  if (!row || !row.dataset.convId) return;
+  selectConversation(row.dataset.convId, row.dataset.btnLabel || '自动追踪');
+  convMenu.style.display = 'none';
+  convDropdownBtn.classList.remove('active');
+});
+
 // Session Selector Dropdown, 74px Collapsed Parallel Cycle & Keyboard Navigation
 convDropdownBtn.addEventListener('click', e => {
   e.stopPropagation();
@@ -99,7 +135,7 @@ convDropdownBtn.addEventListener('click', e => {
     isCollapsed = false;
     hudWin.classList.remove('is-collapsed');
     syncWindowHeight();
-    if (latestSnap) renderMultiTaskBar(latestSnap);
+    if (latestSnap) renderSnapshot(latestSnap, { preserveScroll: true });
   }
   const isOpen = convMenu.style.display !== 'none';
   convMenu.style.display = isOpen ? 'none' : 'flex';
@@ -113,7 +149,7 @@ convDropdownBtn.addEventListener('contextmenu', e => {
     isCollapsed = false;
     hudWin.classList.remove('is-collapsed');
     syncWindowHeight();
-    if (latestSnap) renderMultiTaskBar(latestSnap);
+    if (latestSnap) renderSnapshot(latestSnap, { preserveScroll: true });
   }
   convMenu.style.display = 'flex';
   convDropdownBtn.classList.add('active');
@@ -156,12 +192,14 @@ document.addEventListener('keydown', e => {
 logBtn.addEventListener('click', () => {
   isLogOpen = !isLogOpen;
   logDrawer.classList.toggle('is-open', isLogOpen);
+  hudBody.classList.toggle('log-open', isLogOpen);
   logBtn.classList.toggle('active', isLogOpen);
 });
 
 closeLogBtn.addEventListener('click', () => {
   isLogOpen = false;
   logDrawer.classList.remove('is-open');
+  hudBody.classList.remove('log-open');
   logBtn.classList.remove('active');
 });
 

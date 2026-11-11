@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { electron, PORT, createTrayPngBuffer } = require('./server/config-state.cjs');
+const { electron, PORT, runtimeState, createTrayPngBuffer } = require('./server/config-state.cjs');
 const { getCurrentSnapshot, triggerWakeup, stopRunningTask } = require('./server/actions.cjs');
 const { startHttpServer } = require('./server/http-server.cjs');
 
@@ -134,8 +134,9 @@ if (electron && electron.app) {
             checked: isGhostOpacity,
             click: item => {
               isGhostOpacity = item.checked;
+              runtimeState.isClickThrough = isGhostOpacity;
               if (mainWindow) {
-                mainWindow.setOpacity(isGhostOpacity ? 0.55 : 1.0);
+                mainWindow.setOpacity(isGhostOpacity ? 0.62 : 1.0);
                 mainWindow.setIgnoreMouseEvents(isGhostOpacity, { forward: true });
               }
             }
@@ -252,6 +253,7 @@ if (electron && electron.app) {
       tray.on('double-click', () => {
         if (mainWindow) {
           isGhostOpacity = false;
+          runtimeState.isClickThrough = false;
           mainWindow.setOpacity(1.0);
           mainWindow.setIgnoreMouseEvents(false);
           mainWindow.show();

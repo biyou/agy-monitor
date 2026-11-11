@@ -17,7 +17,8 @@ const PORT = 17890;
 
 // Watchdog & Control State
 const runtimeState = {
-  selectedConvId: 'auto' // 'auto' or specific UUID
+  selectedConvId: 'auto', // 'auto' or specific UUID
+  isClickThrough: false
 };
 
 const watchdogHistory = new Map(); // convId -> { wakeupCount, lastWakeupTime }

@@ -26,6 +26,10 @@ function renderSnapshot(snap, options = {}) {
 
   hudWin.setAttribute('data-state', dataState);
 
+  const isGhost = Boolean(snap.isClickThrough);
+  hudWin.classList.toggle('is-click-through', isGhost);
+  ghostBadge.style.display = isGhost ? 'inline-flex' : 'none';
+
   // 42x42 SVG Progress Ring (r=17 => circumference = 106.8)
   const circumference = 106.8;
   const offset = circumference - (pct / 100) * circumference;
@@ -38,17 +42,19 @@ function renderSnapshot(snap, options = {}) {
   // Title & 3-line Tooltip
   titleText.textContent = snap.title || 'Antigravity 会话监控';
 
-  const initPromptText = snap.initialPrompt ? snap.initialPrompt.slice(0, 140) : '暂无初始任务记录';
-  const latestOrderText = snap.latestPrompt || (snap.fullPrompt ? snap.fullPrompt.slice(0, 140) : '执行当前回合所有步骤');
+  const initPromptText = snap.initialPrompt ? snap.initialPrompt.slice(0, 160) : '暂无初始任务记录';
+  const latestOrderText = snap.latestPrompt || (snap.fullPrompt ? snap.fullPrompt.slice(0, 220) : '执行当前回合所有步骤');
   currentTitleTipHtml = [
     `<div><b class="tip-accent-sky">【任务名称】</b> ${escapeHtml(snap.title || '')}</div>`,
     `<div><b class="tip-accent-sky">【初始任务】</b> ${escapeHtml(initPromptText)}</div>`,
     `<div><b class="tip-accent-sky">【本轮指令】</b> ${escapeHtml(latestOrderText)}</div>`
   ].join('');
 
-  titleText.title = isCollapsed
+  const nativeTaskTip = isCollapsed
     ? `【任务名称】${snap.title || ''}\n【初始任务】${initPromptText}\n【本轮指令】${latestOrderText}`
     : '';
+  titleInfoBtn.title = nativeTaskTip;
+  statusCapsule.title = nativeTaskTip;
 
   if (snap.latestPrompt) {
     followupPill.textContent = `追问: "${snap.latestPrompt}"`;
@@ -112,8 +118,10 @@ function renderSnapshot(snap, options = {}) {
         stageList.appendChild(cardEl);
       }
 
+      const visualStatus = st.status === 'running' && isStalled ? 'stalled' : st.status;
       cardEl.dataset.stageIndex = String(st.index);
       cardEl.dataset.hasSubs = hasSubs ? '1' : '0';
+      cardEl.dataset.stageStatus = visualStatus;
       cardEl.className = `stage-card${isPin ? ' is-pinned' : ''}`;
 
       let iconChar = '●';
@@ -146,7 +154,7 @@ function renderSnapshot(snap, options = {}) {
       const durStr = formatDuration(st.durationSec, st.status);
       const chevronSuffix = hasSubs ? (isSubOpen ? ' ▾' : ' ▸') : '';
 
-      const renderSig = `${st.index}|${st.status}|${iconChar}|${st.title}|${badgeText}|${durStr}|${isSubOpen ? 1 : 0}|${hasSubs ? st.subSteps.length : 0}`;
+      const renderSig = `${st.index}|${visualStatus}|${iconChar}|${st.title}|${badgeText}|${durStr}|${isSubOpen ? 1 : 0}|${hasSubs ? st.subSteps.length : 0}`;
       if (cardEl.dataset.renderSig !== renderSig) {
         cardEl.dataset.renderSig = renderSig;
         const subsHtml =
@@ -155,7 +163,8 @@ function renderSnapshot(snap, options = {}) {
                 .map((sub, sIdx, arr) => {
                   const branch = sIdx === arr.length - 1 ? '└─' : '├─';
                   const subBadge = sub.badge ? ` ${sub.badge}` : '';
-                  return `<div class="stage-substep-row">${branch} (${sIdx + 1}/${arr.length}) ${escapeHtml(sub.title)}${escapeHtml(subBadge)} (${sub.durationSec || 1}s)</div>`;
+                  const errMark = sub.status === 'error' ? ' [已重试]' : '';
+                  return `<div class="stage-substep-row">${branch} (${sIdx + 1}/${arr.length}) ${escapeHtml(sub.title)}${escapeHtml(subBadge)}${errMark} (${sub.durationSec || 1}s)</div>`;
                 })
                 .join('')}</div>`
             : '';

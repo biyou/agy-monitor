@@ -52,14 +52,13 @@ button, select, input {
   border: 1px solid var(--state-border);
   border-radius: 12px;
   box-shadow:
-    0 18px 40px -10px rgba(0, 0, 0, 0.72),
-    0 0 24px -4px var(--state-glow),
-    inset 0 1px 0 0 rgba(241, 245, 249, 0.14);
+    inset 0 0 22px -6px var(--state-glow),
+    inset 0 1px 0 0 rgba(241, 245, 249, 0.16);
   color: #f1f5f9;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: height 0.24s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s ease, box-shadow 0.3s ease, opacity 0.25s ease;
+  transition: height 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s ease, box-shadow 0.3s ease;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -111,8 +110,12 @@ button, select, input {
   max-height: 74px;
 }
 
+.hud-window.is-collapsed .hud-header {
+  border-bottom-color: transparent;
+}
+
 .hud-window.is-click-through {
-  opacity: 0.55;
+  border-style: dashed;
 }
 
 .hud-window::before {
@@ -227,6 +230,40 @@ button, select, input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.title-info-btn {
+  width: 17px;
+  height: 17px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: help;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.title-info-btn:hover {
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.15);
+}
+
+.ghost-badge {
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: rgba(251, 191, 36, 0.16);
+  color: #fde68a;
+  border: 1px dashed rgba(251, 191, 36, 0.55);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .followup-pill {
@@ -476,6 +513,11 @@ button, select, input {
   color: #f8fafc;
 }
 
+.ctrl-icon-svg {
+  flex-shrink: 0;
+  display: block;
+}
+
 .collapse-chevron-svg {
   width: 16px;
   height: 16px;
@@ -487,11 +529,26 @@ button, select, input {
   transform: rotate(180deg);
 }
 
+.stop-btn-slot {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
 .stop-btn {
+  width: 100%;
+  gap: 4px;
   background: rgba(244, 63, 94, 0.15);
   border-color: rgba(244, 63, 94, 0.4);
   color: #fda4af;
   font-weight: 500;
+}
+
+.stop-btn-label {
+  display: none;
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .stop-btn:hover:not(:disabled) {
@@ -505,15 +562,25 @@ button, select, input {
 }
 
 .stop-btn.confirming {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: auto;
+  z-index: 25;
   background: #e11d48 !important;
   border-color: #fb7185 !important;
   color: #ffffff !important;
-  padding: 0 8px;
+  padding: 0 9px;
   font-weight: 600;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.65);
   animation: pulseDot 1s infinite;
 }
 
-/* Bottom Linear Progress inside 74px Header */
+.stop-btn.confirming .stop-btn-label {
+  display: inline;
+}
+
+/* Bottom Linear Progress inside 74px Header (Visible in Collapsed Capsule) */
 .header-linear-track {
   position: absolute;
   left: 0;
@@ -521,6 +588,12 @@ button, select, input {
   bottom: 0;
   height: 2px;
   background: rgba(148, 163, 184, 0.1);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.hud-window.is-collapsed .header-linear-track {
+  opacity: 1;
 }
 
 .header-linear-bar {
@@ -545,8 +618,20 @@ button, select, input {
   flex-direction: column;
   gap: 4px;
   font-size: 11.5px;
+  line-height: 1.45;
+  word-break: break-word;
   color: #cbd5e1;
   pointer-events: none;
+}
+
+.hud-window.has-multi-bar .tooltip-overlay {
+  top: 100px;
+}
+
+.tooltip-overlay.is-ctx-tip {
+  left: auto;
+  right: 12px;
+  width: 316px;
 }
 
 .tip-accent-sky { color: #7dd3fc; font-weight: 600; }

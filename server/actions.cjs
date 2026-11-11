@@ -112,10 +112,12 @@ function getCurrentSnapshot() {
   if (chosen) {
     chosen.snap.conversations = allMeta;
     chosen.snap.parallelTasks = parallelCandidates;
+    chosen.snap.isClickThrough = Boolean(runtimeState.isClickThrough);
     return chosen.snap;
   }
   const fallback = parseConversation(convs[0], allMeta);
   fallback.parallelTasks = parallelCandidates;
+  fallback.isClickThrough = Boolean(runtimeState.isClickThrough);
   return fallback;
 }
 

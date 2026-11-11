@@ -133,20 +133,29 @@ function renderMultiTaskBar(snap) {
     t => t.isRunning && !t.isCompacting && (t.silenceSeconds || 0) >= stallWarnSec
   );
 
-  // Update 74px header session / parallel button
+  // Update 74px header session / parallel / collapsed-step button
   const shortId = snap.convId && snap.convId !== 'none' ? snap.convId.slice(0, 6) : '';
   convDropdownBtn.classList.remove('parallel-cycle-sky', 'parallel-cycle-amber');
 
-  if (isCollapsed && visibleParallelTasks.length >= 2) {
-    const curIdx = Math.max(0, visibleParallelTasks.findIndex(t => t.id === snap.convId));
-    if (stalledTasks.length > 0) {
-      convDropdownBtn.classList.add('parallel-cycle-amber');
-      convBtnText.textContent = `⚠ ${stalledTasks.length}卡顿/${visibleParallelTasks.length}并行 ↻`;
+  const activeStepRaw = snap.activeStageTitle || '当前回合全部步骤执行完毕';
+  const shortActiveStep = activeStepRaw.replace(/\s*·\s*.*$/, '');
+
+  if (isCollapsed) {
+    if (visibleParallelTasks.length >= 2) {
+      const curIdx = Math.max(0, visibleParallelTasks.findIndex(t => t.id === snap.convId));
+      if (stalledTasks.length > 0) {
+        convDropdownBtn.classList.add('parallel-cycle-amber');
+        convBtnText.textContent = `⚠ ${stalledTasks.length}卡顿/${visibleParallelTasks.length}并行 · ${shortActiveStep}`;
+      } else {
+        convDropdownBtn.classList.add('parallel-cycle-sky');
+        convBtnText.textContent = `⚡ ${visibleParallelTasks.length}并行(${curIdx + 1}/${visibleParallelTasks.length}) · ${shortActiveStep}`;
+      }
+      convDropdownBtn.title = `当前步骤: ${activeStepRaw}\n左键点击轮播切换下一个并行任务 · 右键展开完整会话菜单`;
     } else {
-      convDropdownBtn.classList.add('parallel-cycle-sky');
-      convBtnText.textContent = `⚡ ${visibleParallelTasks.length}并行 (${curIdx + 1}/${visibleParallelTasks.length}) ↻`;
+      const stepPrefix = snap.isRunning || snap.isCompacting ? '▸ ' : '';
+      convBtnText.textContent = `${stepPrefix}${activeStepRaw}`;
+      convDropdownBtn.title = `当前步骤: ${activeStepRaw}\n点击展开面板并切换监控会话`;
     }
-    convDropdownBtn.title = '左键点击轮播切换下一个并行任务 · 右键展开完整会话菜单';
   } else {
     convDropdownBtn.title = '切换监控会话';
     if (currentConvChoice === 'auto') {
@@ -156,20 +165,28 @@ function renderMultiTaskBar(snap) {
           : shortId
           ? `自动追踪 (${shortId})`
           : '自动追踪';
+    } else {
+      const chosenMeta = (snap.conversations || []).find(c => c.id === currentConvChoice);
+      convBtnText.textContent = chosenMeta
+        ? `${chosenMeta.isSubagent ? '[子] ' : ''}${chosenMeta.title}`
+        : `会话 ${currentConvChoice.slice(0, 6)}`;
     }
   }
 
   // Show Multi-Task Pill Bar only when >= 2 parallel/recent tasks and not collapsed
-  if (visibleParallelTasks.length < 2 || isCollapsed) {
+  const showMultiBar = visibleParallelTasks.length >= 2 && !isCollapsed;
+  hudWin.classList.toggle('has-multi-bar', showMultiBar);
+  if (!showMultiBar) {
     multiTaskBar.style.display = 'none';
-    multiTaskBar.innerHTML = '';
     return;
   }
 
   multiTaskBar.style.display = 'flex';
-  multiTaskBar.innerHTML = '';
+  while (multiTaskBar.children.length > visibleParallelTasks.length) {
+    multiTaskBar.lastElementChild.remove();
+  }
 
-  visibleParallelTasks.forEach(t => {
+  visibleParallelTasks.forEach((t, idx) => {
     const isAct = t.id === snap.convId;
     const isTaskStalled =
       t.isRunning && !t.isCompacting && (t.silenceSeconds || 0) >= stallWarnSec;
@@ -201,48 +218,44 @@ function renderMultiTaskBar(snap) {
       metricColor = '#6ee7b7';
     }
 
-    const tab = document.createElement('button');
-    tab.className = `task-pill-tab${isAct ? ' is-active' : ''}${
+    let tab = multiTaskBar.children[idx];
+    if (!tab) {
+      tab = document.createElement('button');
+      tab.type = 'button';
+      multiTaskBar.appendChild(tab);
+    }
+
+    const canDismiss = !t.isRunning && !t.isCompacting;
+    const cls = `task-pill-tab${isAct ? ' is-active' : ''}${
       !isAct && isTaskStalled ? ' is-stalled-bg' : ''
     }`;
-    const rolePrefix = t.isSubagent ? `<span class="tab-sub-badge">子</span>` : '';
-    const canDismiss = !t.isRunning && !t.isCompacting;
-    const closeHtml = canDismiss
-      ? `<span class="tab-close" data-close-id="${t.id}" title="从标签栏移除">×</span>`
-      : '';
+    if (tab.className !== cls) tab.className = cls;
 
-    tab.title = `${t.isSubagent ? '[子智能体] ' : ''}${t.title} (${t.completedStages}/${t.totalStages} 阶段 · ${metricText})`;
-    tab.innerHTML = `
-      <span style="color:${dotColor};font-weight:700;">${dotChar}</span>
-      ${rolePrefix}
-      <span class="tab-title">${escapeHtml(t.title)}</span>
-      <span class="tab-metric" style="color:${metricColor};">${metricText}</span>
-      ${closeHtml}
-    `;
+    tab.dataset.taskId = t.id;
+    tab.dataset.taskLabel = t.label || t.title;
+    const tipText = `${t.isSubagent ? '[子智能体] ' : ''}${t.title} (${t.completedStages}/${t.totalStages} 阶段 · ${metricText})`;
+    if (tab.title !== tipText) tab.title = tipText;
 
-    tab.addEventListener('click', e => {
-      const closeEl = e.target.closest('[data-close-id]');
-      if (closeEl) {
-        e.stopPropagation();
-        const cid = closeEl.getAttribute('data-close-id');
-        dismissedParallelIds.add(cid);
-        if (cid === snap.convId && visibleParallelTasks.length > 1) {
-          const nextTask = visibleParallelTasks.find(x => x.id !== cid);
-          if (nextTask) selectConversation(nextTask.id, nextTask.label || nextTask.title);
-        } else {
-          renderMultiTaskBar(snap);
-        }
-        return;
-      }
-      selectConversation(t.id, t.label || t.title);
-    });
-
-    multiTaskBar.appendChild(tab);
+    const sig = `${t.id}|${dotChar}|${t.isSubagent ? 1 : 0}|${t.title}|${metricText}|${canDismiss ? 1 : 0}`;
+    if (tab.dataset.renderSig !== sig) {
+      tab.dataset.renderSig = sig;
+      const rolePrefix = t.isSubagent ? `<span class="tab-sub-badge">子</span>` : '';
+      const closeHtml = canDismiss
+        ? `<span class="tab-close" data-close-id="${t.id}" title="从标签栏移除">×</span>`
+        : '';
+      tab.innerHTML = `
+        <span style="color:${dotColor};font-weight:700;">${dotChar}</span>
+        ${rolePrefix}
+        <span class="tab-title">${escapeHtml(t.title)}</span>
+        <span class="tab-metric" style="color:${metricColor};">${metricText}</span>
+        ${closeHtml}
+      `;
+    }
   });
 }
 
 function buildConvMenu(conversations, currentConvId) {
-  convMenuList.innerHTML = '';
+  const shortId = currentConvId && currentConvId !== 'none' ? currentConvId.slice(0, 6) : '';
   const baseItems = [{ id: 'auto', label: '自动追踪活跃会话 (当前)', tag: '自动', time: '' }];
   const allItems = [
     ...baseItems,
@@ -269,25 +282,35 @@ function buildConvMenu(conversations, currentConvId) {
     '已就绪': ['rgba(52,211,153,0.15)', '#34d399']
   };
 
-  allItems.forEach(item => {
-    const row = document.createElement('div');
+  while (convMenuList.children.length > allItems.length) {
+    convMenuList.lastElementChild.remove();
+  }
+
+  allItems.forEach((item, idx) => {
+    let row = convMenuList.children[idx];
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'conv-item';
+      convMenuList.appendChild(row);
+    }
+
     const isAct = currentConvChoice === item.id;
-    row.className = `conv-item${isAct ? ' active' : ''}`;
-    const [tBg, tColor] = TAG_COLORS[item.tag] || TAG_COLORS['已就绪'];
-    row.innerHTML = `
-      <span class="conv-item-tag" style="background:${tBg};color:${tColor};">${item.tag}</span>
-      <span class="conv-item-title">${escapeHtml(item.label)}</span>
-      <span class="conv-item-time">${escapeHtml(item.time)}</span>
-    `;
-    row.addEventListener('click', () => {
-      const btnLabel = item.id === 'auto'
-        ? (shortId ? `自动追踪 (${shortId})` : '自动追踪')
-        : item.label;
-      selectConversation(item.id, btnLabel);
-      convMenu.style.display = 'none';
-      convDropdownBtn.classList.remove('active');
-    });
-    convMenuList.appendChild(row);
+    const isFocused = row.classList.contains('focused');
+    row.className = `conv-item${isAct ? ' active' : ''}${isFocused ? ' focused' : ''}`;
+    row.dataset.convId = item.id;
+    row.dataset.btnLabel =
+      item.id === 'auto' ? (shortId ? `自动追踪 (${shortId})` : '自动追踪') : item.label;
+
+    const sig = `${item.id}|${item.tag}|${item.label}|${item.time}`;
+    if (row.dataset.renderSig !== sig) {
+      row.dataset.renderSig = sig;
+      const [tBg, tColor] = TAG_COLORS[item.tag] || TAG_COLORS['已就绪'];
+      row.innerHTML = `
+        <span class="conv-item-tag" style="background:${tBg};color:${tColor};">${item.tag}</span>
+        <span class="conv-item-title">${escapeHtml(item.label)}</span>
+        <span class="conv-item-time">${escapeHtml(item.time)}</span>
+      `;
+    }
   });
 }
 

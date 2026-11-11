@@ -167,49 +167,91 @@ function extractTranscriptData(conv) {
 
         if (nextStep && nextStep.type === 'GENERIC') {
           const out = nextStep.content || '';
+          const createdMatch = out.match(/Created At:\s*([^\r\n]+)/i);
+          const completedMatch = out.match(/Completed At:\s*([^\r\n]+)/i);
+          if (createdMatch) {
+            const parsedStart = Date.parse(createdMatch[1].trim());
+            if (!Number.isNaN(parsedStart)) createdAtMs = parsedStart;
+          }
+          const parsedEndMs = completedMatch ? Date.parse(completedMatch[1].trim()) : NaN;
+          const fallbackEndMs = !Number.isNaN(parsedEndMs)
+            ? parsedEndMs
+            : nextStep.created_at
+            ? Date.parse(nextStep.created_at)
+            : createdAtMs + 1000;
+
           if (name === 'invoke_subagent') {
             const subIdMatch = out.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
             if (subIdMatch) {
               spawnedSubagents[subIdMatch[1].toLowerCase()] = unquote(args.Role || args.TypeName || '子代理');
             }
           }
-          const bgMatch = out.match(/background task with task id:\s*([^\s\r\n]+)/i);
-          const logMatch = out.match(/tasks\/(task-\d+\.log)/i);
+          const isBgCapableTool = name === 'run_command' || name === 'schedule';
+          const headerSlice = out.slice(0, 420);
+          const bgMatch = isBgCapableTool
+            ? headerSlice.match(
+                /^Tool is running as a background task with task id:\s*([a-zA-Z0-9_/-]+)/im
+              )
+            : null;
+          const logMatch = isBgCapableTool ? headerSlice.match(/tasks\/(task-\d+\.log)/i) : null;
           if (logMatch) logFile = logMatch[1];
 
           if (bgMatch) {
             bgTaskId = bgMatch[1].trim();
             if (finishedBgTasks.has(bgTaskId)) {
               status = finishedBgTasks.get(bgTaskId);
-              completedAtMs = nextStep.created_at ? Date.parse(nextStep.created_at) : Date.now();
+              completedAtMs = fallbackEndMs;
             } else if (isDaemon && i + 1 + k < steps.length - 1) {
               status = 'done';
               badge = '后台常驻';
-              completedAtMs = nextStep.created_at ? Date.parse(nextStep.created_at) : createdAtMs + 2000;
+              completedAtMs = fallbackEndMs;
             } else {
               status = 'running';
             }
+          } else if (
+            nextStep.status === 'ERROR' ||
+            nextStep.status === 'FAILED' ||
+            /^Encountered error in tool execution:/m.test(headerSlice)
+          ) {
+            status = 'error';
+            if (!badge) badge = '执行失败';
+            completedAtMs = fallbackEndMs;
+          } else if (nextStep.status === 'CANCELED' || nextStep.status === 'CANCELLED') {
+            status = 'stopped';
+            completedAtMs = fallbackEndMs;
           } else if (nextStep.status === 'DONE') {
-            const exitMatch = out.match(/Command exited with code (\d+)/i);
+            const exitMatch =
+              name === 'run_command'
+                ? headerSlice.match(/^Command exited with code (\d+)\./m)
+                : null;
             if (exitMatch && exitMatch[1] !== '0') {
               status = 'error';
               badge = `Exit ${exitMatch[1]}`;
             } else {
               status = 'done';
             }
-            completedAtMs = nextStep.created_at ? Date.parse(nextStep.created_at) : createdAtMs + 1000;
+            completedAtMs = fallbackEndMs;
           } else if (nextStep.status === 'RUNNING') {
-            status = 'running';
+            const hasLaterPlanner = steps
+              .slice(i + 1 + k + 1)
+              .some(st => st.type === 'PLANNER_RESPONSE');
+            if (hasLaterPlanner) {
+              status = 'done';
+              completedAtMs = fallbackEndMs;
+            } else {
+              status = 'running';
+            }
+          } else {
+            status = 'done';
+            completedAtMs = fallbackEndMs;
           }
         } else if (i + 1 + k < steps.length) {
           status = 'done';
           completedAtMs = steps[i + 1 + k]?.created_at ? Date.parse(steps[i + 1 + k].created_at) : createdAtMs + 1000;
         }
 
-        const durationSec = Math.max(
-          1,
-          Math.round(((completedAtMs || Date.now()) - createdAtMs) / 1000)
-        );
+        const endMs = completedAtMs || Date.now();
+        const durationSec = Math.max(1, Math.round((endMs - createdAtMs) / 1000));
         const previewMeta = classifyToolPreview(name, args, command || title, badge);
 
         rawStages.push({
@@ -227,7 +269,8 @@ function extractTranscriptData(conv) {
           bgTaskId,
           logFile,
           durationSec,
-          createdAtMs
+          createdAtMs,
+          endMs
         });
       }
     }
@@ -251,23 +294,35 @@ function extractTranscriptData(conv) {
         status: st.status,
         command: st.command
       });
-      prev.durationSec += st.durationSec;
-      if (st.status === 'running') prev.status = 'running';
+
+      if (st.createdAtMs < prev.lastEndMs) {
+        prev.durationSec += Math.max(0, Math.round((st.endMs - prev.lastEndMs) / 1000));
+      } else {
+        prev.durationSec += st.durationSec;
+      }
+      prev.lastEndMs = Math.max(prev.lastEndMs, st.endMs);
+
+      if (prev.subSteps.some(sub => sub.status === 'running')) {
+        prev.status = 'running';
+      } else {
+        prev.status = prev.subSteps[prev.subSteps.length - 1].status;
+      }
 
       const base = st.groupKey.replace(/^file:/, '');
       const readSubs = prev.subSteps.filter(s => s.name === 'read_file');
       const editSubs = prev.subSteps.filter(s => s.name === 'edit_file' || s.name === 'write_file');
+      const okEditCount = editSubs.filter(s => s.status !== 'error').length || editSubs.length;
 
       if (editSubs.length > 0 && readSubs.length > 0) {
         prev.title = `修改 ${base}`;
         prev.toolType = 'edit';
         prev.previewPrefix = '📝 修改';
-        prev.badge = `${editSubs.length}次修改 · ${readSubs.length}段读取`;
+        prev.badge = `${okEditCount}次修改 · ${readSubs.length}段读取`;
       } else if (editSubs.length > 0) {
         prev.title = st.name === 'write_file' ? `写入 ${base}` : `修改 ${base}`;
         prev.toolType = st.toolType;
         prev.previewPrefix = st.previewPrefix;
-        prev.badge = `${editSubs.length}次修改`;
+        prev.badge = `${okEditCount}次修改`;
       } else {
         const firstRange = readSubs[0]?.badge || '';
         const lastRange = readSubs[readSubs.length - 1]?.badge || '';
@@ -280,6 +335,7 @@ function extractTranscriptData(conv) {
     } else {
       mergedStages.push({
         ...st,
+        lastEndMs: st.endMs,
         subSteps: [
           {
             name: st.name,

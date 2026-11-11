@@ -25,7 +25,9 @@
         <!-- Title + Follow-up Pill + Status + Session Selector -->
         <div class="header-meta">
           <div class="title-row">
-            <span id="titleText" class="title-text" title="悬停查看三行任务详情">正在加载任务状态...</span>
+            <span id="titleText" class="title-text">正在加载任务状态...</span>
+            <button id="titleInfoBtn" class="title-info-btn no-drag" type="button" aria-label="查看三行任务详情">ⓘ</button>
+            <span id="ghostBadge" class="ghost-badge" style="display: none;">穿透中 · 双击托盘恢复</span>
             <span id="followupPill" class="followup-pill" style="display: none;"></span>
           </div>
           <div class="status-row no-drag">
@@ -52,13 +54,24 @@
           </svg>
           <span id="ctxPctLabel" class="tabular-nums">0%</span>
         </div>
-        <button id="stopBtn" class="ctrl-btn stop-btn" title="二次点击确认停止任务">■</button>
+        <div class="stop-btn-slot">
+          <button id="stopBtn" class="ctrl-btn stop-btn" title="二次点击确认停止任务">
+            <svg class="ctrl-icon-svg" width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="3" y="3" width="8" height="8" rx="1.6" fill="currentColor" />
+            </svg>
+            <span id="stopBtnLabel" class="stop-btn-label"></span>
+          </button>
+        </div>
         <button id="collapseBtn" class="ctrl-btn" title="切换折叠迷你胶囊 (520×74)">
           <svg class="collapse-chevron-svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M3.5 10.25L8 5.75L12.5 10.25" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button id="hideBtn" class="ctrl-btn" title="最小化至系统托盘">✕</button>
+        <button id="hideBtn" class="ctrl-btn" title="最小化至系统托盘">
+          <svg class="ctrl-icon-svg" width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <path d="M3.8 3.8L11.2 11.2M11.2 3.8L3.8 11.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" />
+          </svg>
+        </button>
       </div>
 
       <!-- Bottom Linear Progress inside 74px Header -->

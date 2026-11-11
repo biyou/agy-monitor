@@ -139,6 +139,11 @@ function localizeToolTitle(title, toolName, targetPath) {
     [/^Find\s+(.+)$/i, '查找 $1'],
     [/^Grep\s*(.+)$/i, '检索 $1'],
     [/^Inspect\s+(.+)$/i, '检查 $1'],
+    [/^Verify\s+(.+)$/i, '校验 $1'],
+    [/^Syntax\s+and\s+file\s+size\s+verification$/i, '语法与文件体积校验'],
+    [/^Git\s+status.*$/i, '检查 Git 工作区状态'],
+    [/^Stage\s+and\s+commit.*$/i, '暂存并提交 Git 代码'],
+    [/^Amend\s+commit.*$/i, '修正 Git 提交记录'],
     [/^Summarize\s+SVN\s+log.*$/i, '汇总 SVN 提交记录与日期范围'],
     [/^Summarize\s+Git\s+log.*$/i, '汇总 Git 仓库提交记录与日期'],
     [/^List\s+all\s+Git\s+repositories.*$/i, '列出全部 Git 仓库与时间跨度']
